@@ -1,0 +1,13 @@
+[package]
+name = "fzr-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+bumpalo = "3.16.0"
+clap = { version = "4.5.4", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
+fzr = { path = "../fzr" }
+rayon = "1.10.0"
+tempfile = "3.10.1"
+termwiz = "0.22"

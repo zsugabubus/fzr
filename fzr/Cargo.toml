@@ -1,0 +1,11 @@
+[package]
+name = "fzr"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+utf8_map = { path = "../utf8_map" }
+
+[lints.clippy]
+cast-lossless = "deny"
