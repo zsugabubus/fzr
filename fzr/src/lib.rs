@@ -321,7 +321,7 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
     let mut word_index = start;
     let mut subword_index = start;
 
-    let mut iter = s.char_indices();
+    let mut iter = s.char_indices().peekable();
     let mut prev_c = '\0';
 
     while let Some((i, c)) = iter.next() {
@@ -370,14 +370,40 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 tokens.push(Token::start_slash_word(i + 1));
                 prev_c = c;
             }
-            '-' | '_' | '.' | '0' => {
+            '-' | '_' | '.' => {
                 *tokens[word_index].subwords_mut().unwrap() += 1;
                 *tokens[subword_index].letters_mut().unwrap() += 1;
                 subword_index = tokens.len();
                 tokens.push(Token::start_subword(i + 1, 0));
                 prev_c = c;
             }
-            'A'..='Z' if prev_c.is_ascii_lowercase() => {
+            // Ignore leading zeros.
+            '0' if !prev_c.is_ascii_digit() && matches!(iter.peek(), Some((_, '0'..='9'))) => {
+                if skipping {
+                    tokens.pop();
+                } else {
+                    tokens.push(Token::start_skip(i));
+                }
+                let mut to = i;
+                while let Some((i, _)) = iter.next_if(|&(_, c)| c == '0') {
+                    to = i as u32;
+                }
+                let i = if let Some((i, _)) = iter.next_if(|&(_, c)| c.is_ascii_digit()) {
+                    i as u32
+                } else {
+                    to
+                };
+                tokens.push(Token::end_skip(i));
+
+                *tokens[word_index].subwords_mut().unwrap() += 1;
+                subword_index = tokens.len();
+                tokens.push(Token::start_subword(i, 1));
+                prev_c = c;
+            }
+            c if (prev_c.is_ascii_lowercase() && c.is_ascii_uppercase())
+                || (!prev_c.is_ascii_digit() && c.is_ascii_digit())
+                || (prev_c.is_ascii_digit() && !c.is_ascii_digit()) =>
+            {
                 *tokens[word_index].subwords_mut().unwrap() += 1;
                 subword_index = tokens.len();
                 tokens.push(Token::start_subword(i, 1));
@@ -939,14 +965,18 @@ mod tests {
         assert_order("abc", &["abcxxx", "abc/xx"]);
         assert_order("a", &["a/ax", "a/aa_x"]);
         assert_order("a", &["ab", "ba"]);
-        assert_order("a1", &["\ta1\t", "\tA\t1"]);
         assert_order("abc", &["./abc", "./ab-c"]);
         assert_order("a", &["a", "_a"]);
         assert_order("abcd", &["a_b_c/d", "a/xab_c_d"]);
         assert_order("abc", &["ax_bx/cx.x", "ax_bx/bc/x"]);
         assert_order("abc", &["ax_bx/cx.x", "ab.xc"]);
-        assert_order("1", &["201", "21"]);
-        assert_order("1", &["10", "01"]);
+        assert_order("a1", &["\ta1\t", "\tA\t1"]);
+        assert_equal("1", &["001", "1"]);
+        assert_order("1", &["01", "_1"]);
+        assert_order("1", &["1", "10", "101", "21"]);
+        assert_order("12", &["012", "120", "102", "1002"]);
+        assert_order("123", &["X01X02/X01X23", "X1/X02X03", "X01X02/X01X03"]);
+        assert_equal("ab", &["a00b", "a01b"]);
         assert_order("a", &["xxxxxxxx/a/x", "a_x/x"]);
         assert_order("a", &["a_x/x", "a_x_x/x"]);
         assert_order("a", &["xxx xxx xxx a", "x/a"]);
@@ -1015,6 +1045,12 @@ mod tests {
         assert_accepts("a", &"a".repeat(1000));
         assert_accepts("/", &"/".repeat(1000));
         assert_accepts("a", &"Aa".repeat(1000));
+        assert_accepts("0", "0");
+        assert_accepts("0", "00");
+        assert_accepts("1", "01");
+        assert_rejects("00", "00");
+        assert_rejects("01", "01");
+        assert_accepts("10001", "10001");
     }
 
     #[test]
