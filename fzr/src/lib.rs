@@ -313,6 +313,15 @@ impl<'a, S: AsRef<str>, T: AsRef<[Token]>> Haystack<'a, S, T> {
 pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
     assert!(s.len() < u32::MAX as usize);
 
+    macro_rules! c {
+        (not_digit) => {
+            '\0'..='/' | '@'..=char::MAX
+        };
+        (digit) => {
+            '0'..='9'
+        };
+    }
+
     let start = tokens.len();
 
     tokens.push(Token::start_word(0));
@@ -331,19 +340,19 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
             .last()
             .is_some_and(|x| matches!(x.kind, TokenKind::EndSkip) && x.pos == i);
 
-        match c {
-            '\t' => {
+        match (prev_c, c) {
+            (_, '\t') => {
                 start_path = (tokens.len(), i);
                 tokens.push(Token::start_field(i + 1));
                 prev_c = c;
             }
             // Ignore whitespace after skip.
-            ' ' | '\u{A0}' | '\u{202F}' if skipping => {
+            (_, ' ' | '\u{A0}' | '\u{202F}') if skipping => {
                 tokens.pop();
                 tokens.push(Token::end_skip(i + c.encode_utf8(&mut [0; 4]).len() as u32));
             }
             // Collapse spaces.
-            ' ' if prev_c == ' ' => {
+            (' ', ' ') => {
                 if skipping {
                     tokens.pop();
                 } else {
@@ -351,14 +360,16 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 }
                 tokens.push(Token::end_skip(i + 1));
             }
-            ' ' | '=' | '|' | '&' | '<' | '>' | '?' | '"' | '\'' if scheme.is_shell_history() => {
+            (_, ' ' | '=' | '|' | '&' | '<' | '>' | '?' | '"' | '\'')
+                if scheme.is_shell_history() =>
+            {
                 start_path = (tokens.len(), i);
                 word_index = tokens.len();
                 subword_index = tokens.len();
                 tokens.push(Token::start_word(i + 1));
                 prev_c = c;
             }
-            '/' => {
+            (_, '/') => {
                 let (index, pos) = start_path;
                 if let Some(slashes) = tokens[index].slashes_mut() {
                     *slashes += 1;
@@ -370,7 +381,7 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 tokens.push(Token::start_slash_word(i + 1));
                 prev_c = c;
             }
-            '-' | '_' | '.' => {
+            (_, '-' | '_' | '.') => {
                 *tokens[word_index].subwords_mut().unwrap() += 1;
                 *tokens[subword_index].letters_mut().unwrap() += 1;
                 subword_index = tokens.len();
@@ -378,7 +389,7 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 prev_c = c;
             }
             // Ignore leading zeros.
-            '0' if !prev_c.is_ascii_digit() && matches!(iter.peek(), Some((_, '0'..='9'))) => {
+            (c!(not_digit), '0') if matches!(iter.peek(), Some((_, c!(digit)))) => {
                 if skipping {
                     tokens.pop();
                 } else {
@@ -400,10 +411,7 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 tokens.push(Token::start_subword(i, 1));
                 prev_c = c;
             }
-            c if (prev_c.is_ascii_lowercase() && c.is_ascii_uppercase())
-                || (!prev_c.is_ascii_digit() && c.is_ascii_digit())
-                || (prev_c.is_ascii_digit() && !c.is_ascii_digit()) =>
-            {
+            ('a'..='z', 'A'..='Z') | (c!(not_digit), c!(digit)) | (c!(digit), c!(not_digit)) => {
                 *tokens[word_index].subwords_mut().unwrap() += 1;
                 subword_index = tokens.len();
                 tokens.push(Token::start_subword(i, 1));
@@ -412,11 +420,14 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
             // Ignore characters that (likely) has no textual representation.
             //
             // https://en.wikipedia.org/wiki/Unicode_block
-            '\u{E000}'..='\u{F8FF}'
-            | '\u{F0000}'..='\u{FFFFD}'
-            | '\u{100000}'..='\u{10FFFD}'
-            | '\u{1F000}'..='\u{1F0FF}'
-            | '\u{1F300}'..='\u{1FBFF}' => {
+            (
+                _,
+                '\u{E000}'..='\u{F8FF}'
+                | '\u{F0000}'..='\u{FFFFD}'
+                | '\u{100000}'..='\u{10FFFD}'
+                | '\u{1F000}'..='\u{1F0FF}'
+                | '\u{1F300}'..='\u{1FBFF}',
+            ) => {
                 if skipping {
                     tokens.pop();
                 } else {
@@ -425,7 +436,7 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 tokens.push(Token::end_skip(i + c.encode_utf8(&mut [0; 4]).len() as u32));
             }
             // Ignore SGR escape sequences.
-            '\x1b' => {
+            (_, '\x1b') => {
                 if skipping {
                     tokens.pop();
                 } else {
