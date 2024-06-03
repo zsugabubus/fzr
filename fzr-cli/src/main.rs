@@ -738,9 +738,8 @@ impl<'a> HaystackVec<'a> {
 
             if keys.len() < 4096 {
                 for key in keys.iter_mut() {
-                    key.apply_match(
-                        needle.find(&self.haystacks[key.index].as_ref(), &mut self.memory),
-                    );
+                    let s = &self.haystacks[key.index].as_ref();
+                    key.apply_match(needle.find(s, &mut self.memory));
                 }
 
                 if sort {
@@ -753,7 +752,8 @@ impl<'a> HaystackVec<'a> {
 
                 keys.par_iter_mut()
                     .for_each_init(Memory::default, |memory, key| {
-                        key.apply_match(needle.find(&self.haystacks[key.index].as_ref(), memory));
+                        let s = &self.haystacks[key.index].as_ref();
+                        key.apply_match(needle.find(s, memory));
                     });
 
                 if sort {
