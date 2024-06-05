@@ -918,7 +918,9 @@ impl LineExt for Line {
                     line.append_char(c, attrs.clone(), seqno);
                 }
                 Action::Control(ControlCode::HorizontalTab) => {
-                    line.append_str(&" ".repeat(TABSTOP - line.len() % TABSTOP), &attrs, seqno);
+                    for _ in line.len() % TABSTOP..TABSTOP {
+                        line.append_char(' ', attrs.clone(), seqno);
+                    }
                 }
                 Action::PrintString(s) => {
                     line.append_str(&s, &attrs, seqno);
