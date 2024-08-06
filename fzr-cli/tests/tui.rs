@@ -28,11 +28,11 @@ fn assert_select3_rev(keys: &[&str], expected_line: &str) {
 }
 
 #[track_caller]
-fn assert_query_editor(send_keys: &[&str], expected_lines: &str) {
+fn assert_query_editor(send_keys: &[&str], expected_line: &str) {
     TuiTester::new()
         .height(1)
         .keys(send_keys)
-        .assert_screen([expected_lines]);
+        .assert_screen([expected_line]);
 }
 
 #[test]
@@ -151,7 +151,6 @@ fn accept() {
 fn accept_all() {
     TuiTester::new()
         .height(3)
-        .stdin("a\nb")
         .stdin("a\nb")
         .key("M-Enter")
         .assert_screen(&["a", "b", "[exit 0]"]);
