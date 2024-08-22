@@ -627,13 +627,13 @@ pub fn find_fuzzy<'m>(
                 if must_cont { " [must cont]" } else { "" }
             );
 
+            prev_matches |= if head { 2 } else { 0 } << y;
+
             // Give some hints to the compiler that the most likely thing this branch will do is
             // `continue`.
             if total_score <= y_max[y] {
                 continue;
             }
-
-            prev_matches |= 2 << y;
 
             y_max[y] = total_score;
             matches_mask |= (4_u32 << y).wrapping_sub(1);
@@ -1018,6 +1018,8 @@ mod tests {
         assert_equal("ab", &["-a-b", "xAxB"]);
         assert_order("bc", &["ab/b/c", "ab/x_c"]);
         assert_order("abc", &["ab/x_c", "ab/b/c"]);
+        assert_order("abc", &["aBxxBc", "aXbc"]);
+        assert_order("abcd", &["AbBcd", "AbBcD", "AbCxd"]);
     }
 
     #[test]
