@@ -360,7 +360,7 @@ pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
                 }
                 tokens.push(Token::end_skip(i + 1));
             }
-            (_, ' ' | '=' | '|' | '&' | '<' | '>' | '?' | '"' | '\'')
+            (_, ' ' | '=' | '|' | '&' | '<' | '>' | '?' | '"' | '\'' | '@')
                 if scheme.is_shell_history() =>
             {
                 start_path = (tokens.len(), i);
@@ -1020,6 +1020,7 @@ mod tests {
         assert_order("abc", &["ab/x_c", "ab/b/c"]);
         assert_order("abc", &["aBxxBc", "aXbc"]);
         assert_order("abcd", &["AbBcd", "AbBcD", "AbCxd"]);
+        assert_order("a", &["xx@a", "xa"]);
     }
 
     #[test]
@@ -1038,6 +1039,7 @@ mod tests {
         assert_accepts("A", "A");
         assert_rejects("A", "a");
         assert_accepts("/", "/");
+        assert_accepts("@", "@");
         assert_accepts("b", "abc");
         assert_rejects("aa", "a");
         assert_accepts("ab", "ab");
