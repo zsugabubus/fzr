@@ -19,9 +19,13 @@ pub enum CaseSensitivity {
     /// Uppercase and lowercase ASCII characters are treated as equivalent.
     AsciiInsensitive,
     /// Lowercase ASCII characters are treated equivalent to their uppercase counterpart.
+    LowerAsciiInsensitive,
+    /// Uppercase and lowercase characters are treated as equivalent.
+    Insensitive,
+    /// Lowercase characters are treated equivalent to their uppercase counterpart.
     ///
     /// This is the most user-friendly choice.
-    LowerAsciiInsensitive,
+    LowerInsensitive,
 }
 
 /// Builder for [`Pattern`].
@@ -34,7 +38,7 @@ impl PatternBuilder {
     /// Constructs a new [`PatternBuilder`] with defaults.
     pub fn new() -> Self {
         Self {
-            case_sensitivity: CaseSensitivity::LowerAsciiInsensitive,
+            case_sensitivity: CaseSensitivity::LowerInsensitive,
             romanize_unicode: true,
         }
     }
@@ -54,6 +58,13 @@ impl PatternBuilder {
     }
 
     fn insert(&self, map: &mut Utf8MapBuilder, c: char, bits: u32) {
+        fn single<T>(mut it: impl Iterator<Item = T>) -> Option<T> {
+            match it.next() {
+                Some(x) if it.next().is_none() => Some(x),
+                _ => None,
+            }
+        }
+
         match self.case_sensitivity {
             CaseSensitivity::AsciiInsensitive if c.is_ascii_alphabetic() => {
                 self.insert2(map, c.to_ascii_lowercase(), bits);
@@ -62,6 +73,20 @@ impl PatternBuilder {
             CaseSensitivity::LowerAsciiInsensitive if c.is_ascii_lowercase() => {
                 self.insert2(map, c, bits);
                 self.insert2(map, c.to_ascii_uppercase(), bits);
+            }
+            CaseSensitivity::Insensitive => {
+                if let Some(c) = single(c.to_lowercase()) {
+                    self.insert2(map, c, bits);
+                }
+                if let Some(c) = single(c.to_uppercase()) {
+                    self.insert2(map, c, bits);
+                }
+            }
+            CaseSensitivity::LowerInsensitive if c.is_lowercase() => {
+                self.insert2(map, c, bits);
+                if let Some(c) = single(c.to_uppercase()) {
+                    self.insert2(map, c, bits);
+                }
             }
             _ => {
                 self.insert2(map, c, bits);
@@ -191,5 +216,37 @@ mod tests {
             case_matches(CaseSensitivity::LowerAsciiInsensitive),
             (a, a | A, a | aacute, a | A | Aacute)
         );
+    }
+
+    #[test]
+    fn case_insensitive() {
+        assert_eq!(
+            case_matches(CaseSensitivity::Insensitive),
+            (
+                a | A,
+                a | A,
+                a | A | aacute | Aacute,
+                a | A | aacute | Aacute
+            )
+        );
+    }
+
+    #[test]
+    fn case_lower_insensitive() {
+        assert_eq!(
+            case_matches(CaseSensitivity::LowerInsensitive),
+            (a, a | A, a | aacute, a | A | aacute | Aacute)
+        );
+    }
+
+    #[test]
+    fn multichar_uppercase() {
+        assert_eq!('ß'.to_uppercase().to_string(), "SS");
+        let pat = PatternBuilder::new()
+            .case_sensitivity(CaseSensitivity::Insensitive)
+            .build("ß")
+            .unwrap();
+        assert_eq!(pat.map.parse_str("ß").unwrap().1, 1);
+        assert_eq!(pat.map.parse_str("S").unwrap().1, 0);
     }
 }
