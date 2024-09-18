@@ -14,7 +14,7 @@ fn assert_select3(keys: &[&str], expected_line: &str) {
         .height(2)
         .stdin("1\n2\n3")
         .keys(keys)
-        .assert_screen(&[expected_line, "[exit 0]"]);
+        .assert_screen([expected_line, "[exit 0]"]);
 }
 
 #[track_caller]
@@ -24,7 +24,7 @@ fn assert_select3_rev(keys: &[&str], expected_line: &str) {
         .stdin("1\n2\n3")
         .args("--reverse")
         .keys(keys)
-        .assert_screen(&[expected_line, "[exit 0]"]);
+        .assert_screen([expected_line, "[exit 0]"]);
 }
 
 #[track_caller]
@@ -115,19 +115,19 @@ fn abort() {
     TuiTester::new()
         .height(1)
         .key("Escape")
-        .assert_screen(&["[exit 1]"]);
+        .assert_screen(["[exit 1]"]);
     TuiTester::new()
         .height(1)
         .key("C-C")
-        .assert_screen(&["[exit 1]"]);
+        .assert_screen(["[exit 1]"]);
     TuiTester::new()
         .height(1)
         .key("C-G")
-        .assert_screen(&["[exit 1]"]);
+        .assert_screen(["[exit 1]"]);
     TuiTester::new()
         .height(1)
         .key("C-Q")
-        .assert_screen(&["[exit 1]"]);
+        .assert_screen(["[exit 1]"]);
 }
 
 #[test]
@@ -135,7 +135,7 @@ fn accept_empty() {
     TuiTester::new()
         .height(1)
         .key("Enter")
-        .assert_screen(&["[exit 1]"]);
+        .assert_screen(["[exit 1]"]);
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn accept() {
         .height(2)
         .stdin("a\nb")
         .key("Enter")
-        .assert_screen(&["a", "[exit 0]"]);
+        .assert_screen(["a", "[exit 0]"]);
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn accept_all() {
         .height(3)
         .stdin("a\nb")
         .key("M-Enter")
-        .assert_screen(&["a", "b", "[exit 0]"]);
+        .assert_screen(["a", "b", "[exit 0]"]);
 }
 
 #[test]

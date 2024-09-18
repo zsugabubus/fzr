@@ -599,7 +599,7 @@ impl Needle {
             let (s, not) = prefix(s, '!');
             let (s, exact) = prefix(s, '\'');
             let (s, anchor_start) = prefix(s, '^');
-            let n = s.find(|c| matches!(c, ' ' | '|')).unwrap_or(s.len());
+            let n = s.find([' ', '|']).unwrap_or(s.len());
             let (pat, s) = s.split_at(n);
             let (pat, anchor_end) = suffix(pat, '$');
 
