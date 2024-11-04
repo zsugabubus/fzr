@@ -8,6 +8,7 @@ use std::{
     io::{self, BufRead, BufReader, BufWriter, Write},
     ops::{Deref, Range},
     process::{Command, ExitCode},
+    time::{Duration, Instant},
 };
 use termwiz::{
     caps::Capabilities,
@@ -181,6 +182,7 @@ fn interactive<'bump>(
 ) -> Range<usize> {
     let mut prev_query = query.clone();
     let mut cur = 0;
+    let mut last_click = None;
 
     let caps = Capabilities::new_from_env().unwrap();
 
@@ -356,7 +358,12 @@ fn interactive<'bump>(
                     } else {
                         ys.take(k).position(f)
                     } {
-                        if i == cur {
+                        let now = Instant::now();
+                        let fast = last_click
+                            .is_some_and(|x| now.duration_since(x) <= Duration::from_millis(500));
+                        last_click = Some(now);
+
+                        if i == cur && fast {
                             Action::Accept
                         } else {
                             Action::Select(i)
