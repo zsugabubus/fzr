@@ -3,7 +3,6 @@ use clap::Parser as ClapParser;
 use fzr::{find_exact, find_fuzzy, parse_haystack, Haystack, Memory, Pattern, Scheme, Score};
 use std::{
     cmp::{Ord, Ordering, Reverse},
-    ffi::OsStr,
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Write},
     ops::{Deref, Range},
@@ -473,21 +472,22 @@ fn editor<'bump>(
 
     let path = file.into_temp_path();
 
-    if !Command::new(
-        std::env::var_os("EDITOR")
-            .as_deref()
-            .unwrap_or(OsStr::new("vi")),
-    )
-    .stdin(dev_tty())
-    .stdout(dev_tty())
-    .arg(format!("+{}", cur + 1))
-    .arg("--")
-    .arg(path.as_os_str())
-    .spawn()
-    .unwrap()
-    .wait()
-    .unwrap()
-    .success()
+    if !Command::new("sh")
+        .stdin(dev_tty())
+        .stdout(dev_tty())
+        .arg("-c")
+        .arg(format!(
+            "{} +{} -- \"$1\"",
+            std::env::var("EDITOR").as_deref().unwrap_or("vi"),
+            cur + 1
+        ))
+        .arg("sh")
+        .arg(path.as_os_str())
+        .spawn()
+        .unwrap()
+        .wait()
+        .unwrap()
+        .success()
     {
         return;
     }

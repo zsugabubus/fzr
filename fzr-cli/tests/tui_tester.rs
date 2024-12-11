@@ -15,6 +15,7 @@ pub struct TuiTester {
     args: String,
     stdin: String,
     steps: Vec<Step>,
+    envs: Vec<(String, String)>,
 }
 
 impl TuiTester {
@@ -25,6 +26,7 @@ impl TuiTester {
             args: String::new(),
             stdin: String::new(),
             steps: vec![],
+            envs: vec![],
         }
         .wait_millis(50)
     }
@@ -41,6 +43,11 @@ impl TuiTester {
 
     pub fn args<T: AsRef<str>>(mut self, s: T) -> Self {
         self.args = s.as_ref().to_string();
+        self
+    }
+
+    pub fn env<K: Into<String>, V: Into<String>>(mut self, key: K, value: V) -> Self {
+        self.envs.push((key.into(), value.into()));
         self
     }
 
@@ -98,8 +105,21 @@ impl TuiTester {
 
         {
             let output = tmux()
+                .envs(self.envs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
                 .args(["-T", "mouse"])
                 .args(["set", "-g", "mouse", "on", ";"])
+                .args([
+                    "set",
+                    "-g",
+                    "update-environment",
+                    &self
+                        .envs
+                        .iter()
+                        .map(|(k, _)| k.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                    ";",
+                ])
                 .args([
                     "new-session",
                     "-d",

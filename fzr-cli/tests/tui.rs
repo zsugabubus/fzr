@@ -242,6 +242,12 @@ fn editor() {
         .wait_millis(50)
         .keys(["rc:w", "Enter", ":cq", "Enter"])
         .assert_screen(["> a", "[1/2]", selected!("a"), "~"]);
+    TuiTester::new()
+        .env("EDITOR", "clear && echo foo && cat </dev/tty #")
+        .height(1)
+        .key("C-V")
+        .wait_millis(50)
+        .assert_screen(["foo"]);
 }
 
 #[test]
