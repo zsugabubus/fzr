@@ -219,10 +219,6 @@ fn query_change_resets_selection() {
 
 #[test]
 fn editor() {
-    // FIXME: I have no more lifetime to fix this.
-    if option_env!("CI").is_some() {
-        return;
-    }
     TuiTester::new()
         .height(5)
         .args("--read0")
@@ -230,8 +226,9 @@ fn editor() {
         .key("a")
         .screen(["> a", "[2/3]", selected!("a"), "a2", "~"])
         .key("C-V")
-        .wait_millis(50)
+        .wait_millis(250)
         .key("rcZZ")
+        .wait_millis(150)
         .assert_screen([">", "[2/2]", selected!("c"), "a2", "~"]);
     TuiTester::new()
         .height(4)
@@ -239,14 +236,15 @@ fn editor() {
         .key("a")
         .screen(["> a", "[1/2]", selected!("a"), "~"])
         .key("C-V")
-        .wait_millis(50)
+        .wait_millis(250)
         .keys(["rc:w", "Enter", ":cq", "Enter"])
+        .wait_millis(150)
         .assert_screen(["> a", "[1/2]", selected!("a"), "~"]);
     TuiTester::new()
         .env("EDITOR", "clear && echo foo && cat </dev/tty #")
         .height(1)
         .key("C-V")
-        .wait_millis(50)
+        .wait_millis(150)
         .assert_screen(["foo"]);
 }
 
