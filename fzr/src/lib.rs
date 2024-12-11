@@ -260,7 +260,7 @@ pub struct Haystack<'a, S = &'a str, T = &'a [Token]> {
     _phantom: &'a PhantomData<()>,
 }
 
-impl<'a, S: AsRef<str>> Haystack<'a, S, Box<[Token]>> {
+impl<S: AsRef<str>> Haystack<'_, S, Box<[Token]>> {
     /// Returns the preprocessed haystack.
     ///
     /// This function is a safe wrapper around [`parse_haystack`] however it needs to allocate an
@@ -276,7 +276,7 @@ impl<'a, S: AsRef<str>> Haystack<'a, S, Box<[Token]>> {
     }
 }
 
-impl<'a, S, T> Haystack<'a, S, T> {
+impl<S, T> Haystack<'_, S, T> {
     /// Creates a [`Haystack`] from parts.
     ///
     /// # Safety
@@ -297,7 +297,7 @@ impl<'a, S, T> Haystack<'a, S, T> {
     }
 }
 
-impl<'a, S: AsRef<str>, T: AsRef<[Token]>> Haystack<'a, S, T> {
+impl<S: AsRef<str>, T: AsRef<[Token]>> Haystack<'_, S, T> {
     #[inline]
     pub fn as_ref(&self) -> Haystack {
         // SAFETY: Taking reference should not affect safety.
@@ -760,7 +760,7 @@ pub struct Match<'m> {
     ranges: &'m [Range<u32>],
 }
 
-impl<'m> Match<'m> {
+impl Match<'_> {
     /// Returns match score.
     pub fn score(&self) -> Score {
         self.score
