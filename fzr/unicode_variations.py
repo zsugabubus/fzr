@@ -1,34 +1,39 @@
 #!/usr/bin/env python3
 from re import search
-import sys
 import os
+import subprocess
+import sys
+from collections import defaultdict
 
-t = {}
+UNICODE_DATA_URL = 'https://www.unicode.org/Public/UCD/latest/ucd/UnicodeData.txt'
+CATEGORIES = {'Lu', 'Ll', 'Lt', 'Lm', 'So'}
 
-# curl -LO https://www.unicode.org/Public/UCD/latest/ucd/NamesList.txt
-with open('NamesList.txt') as f:
-    for s in f:
-        if m := search('^([0-9A-F]+)\t.* ([A-Z])( |$)', s):
-            codepoint, letter = int(m[1], 16), m[2]
+output = subprocess.check_output(['curl', UNICODE_DATA_URL], encoding='utf-8')
+letter_variations = defaultdict(list)
 
-            if 'COMBINING' in s:
-                continue
-            # ARBIC LETTER WITH ...
-            elif 'ARABIC' in s:
-                continue
-            # SMALL CAPITAL
-            elif 'CAPITAL' in s:
-                pass
-            elif 'SMALL' in s:
-                letter = letter.lower()
-            else:
-                continue
+for line in output.splitlines():
+    fields = line.split(';')
+    codepoint = int(fields[0], 16)
+    name = fields[1]
+    gc = fields[2]
 
-            if codepoint >= 0x1FFFF:
-                break
+    if gc not in CATEGORIES:
+        continue
 
-            t[letter] = t.get(letter) or []
-            t[letter].append(chr(codepoint))
+    m = search(' ([A-Z])( |$)', name)
+    if m is None:
+        continue
+    letter = m[1]
+
+    # SMALL CAPITAL
+    if 'CAPITAL' in name:
+        pass
+    elif 'SMALL' in name:
+        letter = letter.lower()
+    else:
+        continue
+
+    letter_variations[letter].append(chr(codepoint))
 
 tab = ' ' * 4
 
@@ -38,7 +43,7 @@ print(f"""\
 pub const fn get_unicode_variations(c: char) -> &'static [char] {{
 {tab}match c {{\
 """)
-for letter, variations in sorted(t.items()):
+for letter, variations in sorted(letter_variations.items()):
     print("{indent}'{left}' => &[{right}],".format(
         indent=tab * 2,
         left=letter,
