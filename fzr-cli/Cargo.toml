@@ -8,6 +8,7 @@ license = "MIT"
 bumpalo = "3.16.0"
 clap = { version = "4.5.4", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
 fzr = { path = "../fzr" }
+ouroboros = "0.18.4"
 rayon = "1.10.0"
 tempfile = "3.10.1"
 termwiz = "0.22"

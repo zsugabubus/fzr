@@ -106,24 +106,23 @@ fn main() -> ExitCode {
         headers
     };
 
-    let bump = Bump::new();
-    let mut haystacks = read_haystacks(items, Scheme::ShellHistory, &bump);
+    let mut searcher = Searcher::new(Haystacks::from_strings(items, Scheme::ShellHistory));
 
     let mut query = cli.query;
 
-    haystacks.find(&Needle::parse(&query), sort, false);
+    searcher.find(&Needle::parse(&query), sort, false);
 
-    let accept = if cli.exit_0 && haystacks.matches_len() == 0 {
+    let accept = if cli.exit_0 && searcher.matches_len() == 0 {
         0..0
-    } else if cli.select_1 && haystacks.matches_len() == 1 {
+    } else if cli.select_1 && searcher.matches_len() == 1 {
         0..1
     } else if cli.filter {
-        0..haystacks.matches_len()
+        0..searcher.matches_len()
     } else {
         interactive(
             cli.prompt,
             &mut query,
-            (&bump, &mut haystacks),
+            &mut searcher,
             sort,
             &headers,
             cli.reverse,
@@ -145,9 +144,9 @@ fn main() -> ExitCode {
 
     for i in accept.clone() {
         if cli.print_index {
-            print!(haystacks.get_index(i));
+            print!(searcher.get_index(i));
         } else {
-            print!(haystacks.get_str(i));
+            print!(searcher.get_str(i));
         }
     }
 
@@ -170,10 +169,10 @@ fn dev_tty() -> File {
         .expect("terminal device available at /dev/tty")
 }
 
-fn interactive<'bump>(
+fn interactive(
     prompt: String,
     query: &mut String,
-    (bump, haystacks): (&'bump Bump, &mut HaystackVec<'bump>),
+    searcher: &mut Searcher,
     sort: bool,
     headers: &[String],
     reverse: bool,
@@ -216,15 +215,15 @@ fn interactive<'bump>(
     buf.add_change(Change::CursorShape(CursorShape::SteadyBar));
 
     loop {
-        if haystacks.is_dirty() || *query != prev_query {
+        if searcher.is_dirty() || *query != prev_query {
             let needle = Needle::parse(query);
-            let shrink = !haystacks.is_dirty()
+            let shrink = !searcher.is_dirty()
                 && query.starts_with(&prev_query)
                 && needle.is_sequential_shrink();
 
-            haystacks.find(&needle, sort, shrink);
+            searcher.find(&needle, sort, shrink);
 
-            if select_1 && haystacks.matches_len() == 1 {
+            if select_1 && searcher.matches_len() == 1 {
                 return 0..1;
             }
 
@@ -251,7 +250,7 @@ fn interactive<'bump>(
         if let Some(y) = y.next() {
             front.set_cursor(y, 0);
             front.set_line_from_text(
-                &format!("[{}/{}]", haystacks.matches_len(), haystacks.len()),
+                &format!("[{}/{}]", searcher.matches_len(), searcher.len()),
                 &normal,
             );
         }
@@ -263,10 +262,10 @@ fn interactive<'bump>(
 
         let item_ys = y.clone();
 
-        for (i, y) in (0..haystacks.matches_len()).zip(y.by_ref()) {
+        for (i, y) in (0..searcher.matches_len()).zip(y.by_ref()) {
             front.set_cursor(y, 0);
             front.set_line_from_sgr_text(
-                haystacks.get_str(i).as_bytes(),
+                searcher.get_str(i).as_bytes(),
                 if i == cur { &selected } else { &normal },
             );
         }
@@ -349,7 +348,7 @@ fn interactive<'bump>(
                     let mouse_y = usize::from(y) - 1;
 
                     let ys = item_ys.clone();
-                    let k = haystacks.matches_len();
+                    let k = searcher.matches_len();
                     let f = |y| y == mouse_y;
 
                     if let Some(i) = if reverse {
@@ -400,21 +399,21 @@ fn interactive<'bump>(
 
         match action {
             Action::Accept => {
-                return if cur < haystacks.matches_len() {
+                return if cur < searcher.matches_len() {
                     cur..cur + 1
                 } else {
                     0..0
                 };
             }
             Action::AcceptAll => {
-                return 0..haystacks.matches_len();
+                return 0..searcher.matches_len();
             }
             Action::AcceptNone => return 0..0,
             Action::Select(i) => {
                 cur = i;
             }
             Action::SelectNext => {
-                if cur + 1 < haystacks.matches_len() {
+                if cur + 1 < searcher.matches_len() {
                     cur += 1;
                 }
             }
@@ -442,7 +441,7 @@ fn interactive<'bump>(
                 buf.terminal().set_cooked_mode().unwrap();
                 buf.terminal().exit_alternate_screen().unwrap();
 
-                editor(query, (bump, haystacks), cur);
+                editor(query, searcher, cur);
 
                 buf.check_for_resize().unwrap();
                 buf.terminal().set_raw_mode().unwrap();
@@ -456,15 +455,11 @@ fn interactive<'bump>(
     }
 }
 
-fn editor<'bump>(
-    query: &mut String,
-    (bump, haystacks): (&'bump Bump, &mut HaystackVec<'bump>),
-    cur: usize,
-) {
+fn editor(query: &mut String, searcher: &mut Searcher, cur: usize) {
     let mut file = tempfile::NamedTempFile::with_prefix("fzr").unwrap();
 
-    for i in 0..haystacks.matches_len() {
-        file.write_all(haystacks.get_str(i).as_bytes()).unwrap();
+    for i in 0..searcher.matches_len() {
+        file.write_all(searcher.get_str(i).as_bytes()).unwrap();
         file.write_all(b"\n").unwrap();
     }
 
@@ -498,36 +493,8 @@ fn editor<'bump>(
         .map(String::from_utf8)
         .filter_map(Result::ok);
 
-    // FIXME: Move allocator inside `HaystackVec` so `Bump::reset()` can be called. But it seems
-    // impossible.
-    *haystacks = read_haystacks(lines, Scheme::ShellHistory, bump);
+    *searcher = Searcher::new(Haystacks::from_strings(lines, Scheme::ShellHistory));
     query.clear();
-}
-
-fn read_haystacks<I: IntoIterator<Item = String>>(
-    iter: I,
-    scheme: Scheme,
-    bump: &Bump,
-) -> HaystackVec {
-    HaystackVec::new({
-        let mut haystacks = Vec::new();
-        let mut tokens = Vec::new();
-
-        iter.into_iter().for_each(|s| {
-            let s = s.as_str();
-
-            tokens.clear();
-            parse_haystack(s, scheme, &mut tokens);
-
-            let value = &*bump.alloc_str(s);
-            let tokens = &*bump.alloc_slice_copy(tokens.as_slice());
-
-            // SAFETY: `tokens` derived from `value`.
-            haystacks.push(unsafe { Haystack::from_parts(value, tokens) });
-        });
-
-        haystacks
-    })
 }
 
 fn is_wordchar(c: char) -> bool {
@@ -679,24 +646,63 @@ impl Needle {
     }
 }
 
-/// [`Haystack`] store.
-struct HaystackVec<'a> {
-    haystacks: Vec<Haystack<'a>>,
+#[ouroboros::self_referencing]
+struct Haystacks {
+    bump: Bump,
+    #[borrows(bump)]
+    #[covariant]
+    data: Vec<Haystack<'this>>,
+}
+
+impl Haystacks {
+    fn from_strings<I>(iter: I, scheme: Scheme) -> Self
+    where
+        I: IntoIterator<Item = String>,
+    {
+        HaystacksBuilder {
+            bump: Bump::new(),
+            data_builder: |bump| {
+                let mut tokens = Vec::with_capacity(64);
+                // `Vec::push` is faster than `collect` and using `Box` instead of `Vec` also makes
+                // the code slower for some reason.
+                let mut v = Vec::new();
+                iter.into_iter().for_each(|s| {
+                    let s = s.as_str();
+
+                    tokens.clear();
+                    parse_haystack(s, scheme, &mut tokens);
+
+                    let value = &*bump.alloc_str(s);
+                    let tokens = &*bump.alloc_slice_copy(tokens.as_slice());
+
+                    // SAFETY: `tokens` derived from `value`.
+                    v.push(unsafe { Haystack::from_parts(value, tokens) })
+                });
+                v
+            },
+        }
+        .build()
+    }
+}
+
+struct Searcher {
+    haystacks: Haystacks,
     keys: Vec<HaystackKey>,
     matches_len: usize,
     memory: Memory,
     dirty: bool,
 }
 
-impl<'a> HaystackVec<'a> {
-    fn new(haystacks: Vec<Haystack<'a>>) -> Self {
-        let keys = (0..haystacks.len())
-            .map(|index| HaystackKey { score: None, index })
-            .collect::<Vec<_>>();
-
+impl Searcher {
+    fn new(haystacks: Haystacks) -> Self {
         Self {
+            keys: {
+                // Don't convert `Vec` into `Box` since that makes the code slower for some reason.
+                (0..haystacks.borrow_data().len())
+                    .map(|index| HaystackKey { score: None, index })
+                    .collect()
+            },
             haystacks,
-            keys,
             matches_len: 0,
             memory: Memory::new(),
             dirty: true,
@@ -707,7 +713,7 @@ impl<'a> HaystackVec<'a> {
     ///
     /// It includes both matching and non-matching items.
     fn len(&self) -> usize {
-        self.haystacks.len()
+        self.haystacks.borrow_data().len()
     }
 
     /// Returns number of matching haystacks.
@@ -720,7 +726,7 @@ impl<'a> HaystackVec<'a> {
     }
 
     fn get_str(&self, index: usize) -> &str {
-        self.haystacks[self.get_index(index)].value()
+        self.haystacks.borrow_data()[self.get_index(index)].value()
     }
 
     /// Whether haystacks changed and a call to [`find`][Self::find] is required to make
@@ -741,11 +747,12 @@ impl<'a> HaystackVec<'a> {
                 0..self.len()
             };
 
+            let haystacks = self.haystacks.borrow_data();
             let keys = &mut self.keys[index];
 
             if keys.len() < 4096 {
                 for key in keys.iter_mut() {
-                    let s = &self.haystacks[key.index].as_ref();
+                    let s = &haystacks[key.index].as_ref();
                     key.apply_match(needle.find(s, &mut self.memory));
                 }
 
@@ -759,7 +766,7 @@ impl<'a> HaystackVec<'a> {
 
                 keys.par_iter_mut()
                     .for_each_init(Memory::default, |memory, key| {
-                        let s = &self.haystacks[key.index].as_ref();
+                        let s = &haystacks[key.index].as_ref();
                         key.apply_match(needle.find(s, memory));
                     });
 
