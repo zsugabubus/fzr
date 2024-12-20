@@ -150,6 +150,8 @@ fn main() -> ExitCode {
         }
     }
 
+    stdout.flush().unwrap();
+
     if accept.is_empty() {
         ExitCode::FAILURE
     } else {
