@@ -1,6 +1,6 @@
 use bumpalo::Bump;
 use clap::Parser as ClapParser;
-use fzr::{find_exact, find_fuzzy, parse_haystack, Haystack, Memory, Pattern, Scheme, Score};
+use fzr::{find_exact, find_fuzzy, parse_haystack, Haystack, Memory, Pattern, Score};
 use std::{
     cmp::{Ord, Ordering, Reverse},
     fs::File,
@@ -106,7 +106,7 @@ fn main() -> ExitCode {
         headers
     };
 
-    let mut searcher = Searcher::new(Haystacks::from_strings(items, Scheme::ShellHistory));
+    let mut searcher = Searcher::new(Haystacks::from_strings(items));
 
     let mut query = cli.query;
 
@@ -493,7 +493,7 @@ fn editor(query: &mut String, searcher: &mut Searcher, cur: usize) {
         .map(String::from_utf8)
         .filter_map(Result::ok);
 
-    *searcher = Searcher::new(Haystacks::from_strings(lines, Scheme::ShellHistory));
+    *searcher = Searcher::new(Haystacks::from_strings(lines));
     query.clear();
 }
 
@@ -655,7 +655,7 @@ struct Haystacks {
 }
 
 impl Haystacks {
-    fn from_strings<I>(iter: I, scheme: Scheme) -> Self
+    fn from_strings<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = String>,
     {
@@ -670,7 +670,7 @@ impl Haystacks {
                     let s = s.as_str();
 
                     tokens.clear();
-                    parse_haystack(s, scheme, &mut tokens);
+                    parse_haystack(s, &mut tokens);
 
                     let value = &*bump.alloc_str(s);
                     let tokens = &*bump.alloc_slice_copy(tokens.as_slice());

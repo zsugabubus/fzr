@@ -9,13 +9,14 @@
 //!
 //! let needle = Pattern::new("o").unwrap();
 //!
-//! let haystack = Haystack::parse("fóo", Scheme::ShellHistory);
+//! let haystack = Haystack::parse("fóo");
 //!
 //! let m = find_fuzzy(&haystack.as_ref(), &needle, &mut memory).unwrap();
 //! assert_eq!(m.ranges_len(), 1);
 //! assert_eq!(m.range(0), 1..3);
 //! ```
 use std::{
+    fmt,
     marker::PhantomData,
     num::{NonZeroU64, Saturating},
     ops::{Add, Range},
@@ -28,35 +29,6 @@ mod unicode;
 pub use pattern::*;
 
 use crate::bits::BitsExt;
-
-#[derive(Clone, Copy, Debug)]
-pub enum Scheme {
-    /// Shell history.
-    ///
-    /// # Example
-    ///
-    /// ```txt
-    /// cargo build --release && echo | cat /etc/passwd
-    /// ```
-    ShellHistory,
-    /// Path.
-    ///
-    /// The only difference to [`ShellHistory`][Self::ShellHistory] is that `" "` (space) is not treated as
-    /// a word delimiter.
-    ///
-    /// # Example
-    ///
-    /// ```txt
-    /// /path/to/my file.txt
-    /// ```
-    Path,
-}
-
-impl Scheme {
-    fn is_shell_history(self) -> bool {
-        matches!(self, Self::ShellHistory)
-    }
-}
 
 /// Represents match score.
 ///
@@ -94,148 +66,101 @@ impl Add for Score {
 #[derive(Clone, Copy, Debug)]
 enum TokenKind {
     StartField,
-    StartWord {
-        subwords: Saturating<u8>,
-        letters: Saturating<u8>,
-    },
-    StartSlashWord {
-        subwords: Saturating<u8>,
-        letters: Saturating<u8>,
-    },
-    StartSubword {
-        letters: Saturating<u8>,
-    },
-    StartPath {
-        slashes: Saturating<u8>,
-    },
+    StartWord,
+    StartSlashWord,
+    StartSubword,
+    StartPath,
     StartSkip,
     EndSkip,
     End,
 }
 
 /// Opaque object emitted by [`parse_haystack`].
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 pub struct Token {
     pos: u32,
     kind: TokenKind,
+    subwords_or_slashes: Saturating<u8>,
+    letters: Saturating<u8>,
 }
 
 impl Token {
-    fn start_skip(pos: u32) -> Self {
+    fn new(pos: u32, kind: TokenKind) -> Self {
         Self {
             pos,
-            kind: TokenKind::StartSkip,
+            kind,
+            subwords_or_slashes: Saturating(0),
+            letters: Saturating(0),
         }
     }
 
-    fn end_skip(pos: u32) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::EndSkip,
-        }
+    fn has_slashes(&self) -> bool {
+        matches!(self.kind, TokenKind::StartPath)
     }
 
-    fn start_subword(pos: u32, letters: u8) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::StartSubword {
-                letters: Saturating(letters),
-            },
-        }
+    fn has_subwords(&self) -> bool {
+        matches!(
+            self.kind,
+            TokenKind::StartField | TokenKind::StartWord | TokenKind::StartSlashWord
+        )
     }
 
-    fn start_path(pos: u32, slashes: u8) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::StartPath {
-                slashes: Saturating(slashes),
-            },
-        }
+    fn has_letters(&self) -> bool {
+        matches!(
+            self.kind,
+            TokenKind::StartField
+                | TokenKind::StartWord
+                | TokenKind::StartSlashWord
+                | TokenKind::StartSubword
+        )
     }
 
-    fn start_slash_word(pos: u32) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::StartSlashWord {
-                subwords: Saturating(0),
-                letters: Saturating(0),
-            },
-        }
+    fn slashes(&self) -> Saturating<u8> {
+        debug_assert!(self.has_slashes());
+        self.subwords_or_slashes
     }
 
-    fn end(pos: u32) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::End,
-        }
+    fn slashes_mut(&mut self) -> &mut Saturating<u8> {
+        debug_assert!(self.has_slashes());
+        &mut self.subwords_or_slashes
     }
 
-    fn start_field(pos: u32) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::StartField,
-        }
+    fn subwords(&self) -> Saturating<u8> {
+        debug_assert!(self.has_subwords());
+        self.subwords_or_slashes
     }
 
-    fn start_word(pos: u32) -> Self {
-        Self {
-            pos,
-            kind: TokenKind::StartWord {
-                subwords: Saturating(0),
-                letters: Saturating(0),
-            },
-        }
+    fn subwords_mut(&mut self) -> &mut Saturating<u8> {
+        debug_assert!(self.has_subwords());
+        &mut self.subwords_or_slashes
     }
 
-    fn slashes_mut(&mut self) -> Option<&mut Saturating<u8>> {
-        if let Self {
-            kind: TokenKind::StartPath { ref mut slashes },
-            ..
-        } = self
-        {
-            Some(slashes)
-        } else {
-            None
-        }
+    fn letters(&self) -> Saturating<u8> {
+        debug_assert!(self.has_letters());
+        self.letters
     }
 
-    fn subwords_mut(&mut self) -> Option<&mut Saturating<u8>> {
-        if let Self {
-            kind:
-                TokenKind::StartWord {
-                    ref mut subwords, ..
-                }
-                | TokenKind::StartSlashWord {
-                    ref mut subwords, ..
-                },
-            ..
-        } = self
-        {
-            Some(subwords)
-        } else {
-            None
-        }
+    fn letters_mut(&mut self) -> &mut Saturating<u8> {
+        debug_assert!(self.has_letters());
+        &mut self.letters
     }
+}
 
-    fn letters_mut(&mut self) -> Option<&mut Saturating<u8>> {
-        if let Self {
-            kind:
-                TokenKind::StartWord {
-                    ref mut letters, ..
-                }
-                | TokenKind::StartSlashWord {
-                    ref mut letters, ..
-                }
-                | TokenKind::StartSubword {
-                    ref mut letters, ..
-                },
-            ..
-        } = self
-        {
-            Some(letters)
-        } else {
-            None
+impl fmt::Debug for Token {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut builder = f.debug_struct("Token");
+        builder.field("pos", &self.pos);
+        builder.field("kind", &self.kind);
+        if self.has_slashes() {
+            builder.field("slashes", &self.slashes());
         }
+        if self.has_subwords() {
+            builder.field("subwords", &self.subwords());
+        }
+        if self.has_letters() {
+            builder.field("letters", &self.letters());
+        }
+        builder.finish()
     }
 }
 
@@ -266,9 +191,9 @@ impl<S: AsRef<str>> Haystack<'_, S, Box<[Token]>> {
     /// This function is a safe wrapper around [`parse_haystack`] however it needs to allocate an
     /// auxiliary [`Vec`] on every call. See [`Self::from_parts`] for a more efficient but unsafe
     /// alternative.
-    pub fn parse(value: S, scheme: Scheme) -> Self {
+    pub fn parse(value: S) -> Self {
         let mut tokens = Vec::new();
-        parse_haystack(value.as_ref(), scheme, &mut tokens);
+        parse_haystack(value.as_ref(), &mut tokens);
         let tokens = tokens.into_boxed_slice();
 
         // SAFETY: `tokens` is derived from `value`.
@@ -305,158 +230,189 @@ impl<S: AsRef<str>, T: AsRef<[Token]>> Haystack<'_, S, T> {
     }
 }
 
-/// Preprocesses haystack according to the given scheme.
+/// Preprocesses haystack.
 ///
 /// # Panics
 ///
 /// Panics if `s.len()` >= [`u32::MAX`].
-pub fn parse_haystack(s: &str, scheme: Scheme, tokens: &mut Vec<Token>) {
-    assert!(s.len() < u32::MAX as usize);
+pub fn parse_haystack(s: &str, tokens: &mut Vec<Token>) {
+    use std::str::CharIndices;
 
-    macro_rules! c {
-        (not_digit) => {
-            '\0'..='/' | '@'..=char::MAX
-        };
-        (digit) => {
-            '0'..='9'
-        };
+    fn is_next_ascii_digit(iter: &CharIndices) -> bool {
+        matches!(*iter.as_str().as_bytes(), [b'0'..=b'9', ..])
     }
 
-    let start = tokens.len();
+    fn next_if_ascii_leading_zero(iter: &mut CharIndices) -> Option<usize> {
+        if matches!(*iter.as_str().as_bytes(), [b'0', b'0'..=b'9', ..]) {
+            Some(iter.next().unwrap().0)
+        } else {
+            None
+        }
+    }
 
-    tokens.push(Token::start_word(0));
+    assert!(s.len() < u32::MAX as usize);
+    debug_assert!(tokens.is_empty());
 
-    let mut start_path: (usize, u32) = (start, 0);
-    let mut word_index = start;
-    let mut subword_index = start;
+    let mut path_index = 0;
+    let mut word_index = 0;
+    let mut subword_index = 0;
 
-    let mut iter = s.char_indices().peekable();
+    let mut iter = s.char_indices();
     let mut prev_c = '\0';
+
+    tokens.push(Token::new(0, TokenKind::StartField));
 
     while let Some((i, c)) = iter.next() {
         let i = i as u32;
 
-        let skipping = tokens
-            .last()
-            .is_some_and(|x| matches!(x.kind, TokenKind::EndSkip) && x.pos == i);
+        debug_assert!(!tokens.is_empty());
+        let last = unsafe { tokens.get_unchecked(tokens.len() - 1) };
+        let skipping = matches!(last.kind, TokenKind::EndSkip) && last.pos == i;
 
-        match (prev_c, c) {
-            (_, '\t') => {
-                start_path = (tokens.len(), i);
-                tokens.push(Token::start_field(i + 1));
-                prev_c = c;
+        macro_rules! add_subword_to_word {
+            () => {
+                let token = unsafe { tokens.get_unchecked_mut(word_index) };
+                *token.subwords_mut() += 1;
+            };
+        }
+
+        macro_rules! add_letter_to_subword {
+            () => {
+                let token = unsafe { tokens.get_unchecked_mut(subword_index) };
+                *token.letters_mut() += 1;
+            };
+        }
+
+        macro_rules! start_subword {
+            ($pos:expr) => {
+                subword_index = tokens.len();
+                tokens.push(Token::new($pos, TokenKind::StartSubword));
+            };
+        }
+
+        macro_rules! skip {
+            ($to:expr) => {
+                if skipping {
+                    let end_skip = tokens.pop();
+                    debug_assert!(matches!(end_skip.unwrap().kind, TokenKind::EndSkip));
+                } else {
+                    tokens.push(Token::new(i, TokenKind::StartSkip));
+                }
+                tokens.push(Token::new($to, TokenKind::EndSkip));
+            };
+        }
+
+        match c {
+            // Handle fields.
+            '\t' => {
+                path_index = tokens.len();
+                word_index = tokens.len();
+                subword_index = tokens.len();
+                tokens.push(Token::new(
+                    i + '\t'.len_utf8() as u32,
+                    TokenKind::StartField,
+                ));
+                prev_c = '\0';
             }
-            // Ignore whitespace after skip.
-            (_, ' ' | '\u{A0}' | '\u{202F}') if skipping => {
-                tokens.pop();
-                tokens.push(Token::end_skip(i + c.encode_utf8(&mut [0; 4]).len() as u32));
+            // Continue ignoring space.
+            ' ' | '\u{A0}' | '\u{202F}' if skipping => {
+                skip!(i + c.len_utf8() as u32);
             }
             // Collapse spaces.
-            (' ', ' ') => {
-                if skipping {
-                    tokens.pop();
-                } else {
-                    tokens.push(Token::start_skip(i));
-                }
-                tokens.push(Token::end_skip(i + 1));
+            ' ' if prev_c == ' ' => {
+                debug_assert!(!skipping);
+                skip!(i + c.len_utf8() as u32);
             }
-            (_, ' ' | '=' | '|' | '&' | '<' | '>' | '?' | '"' | '\'' | '@')
-                if scheme.is_shell_history() =>
-            {
-                start_path = (tokens.len(), i);
-                word_index = tokens.len();
-                subword_index = tokens.len();
-                tokens.push(Token::start_word(i + 1));
-                prev_c = c;
-            }
-            (_, '/') => {
-                let (index, pos) = start_path;
-                if let Some(slashes) = tokens[index].slashes_mut() {
-                    *slashes += 1;
+            // Handle paths.
+            '/' => {
+                let token = unsafe { tokens.get_unchecked_mut(path_index) };
+                if matches!(token.kind, TokenKind::StartPath) {
+                    *token.slashes_mut() += 1;
                 } else {
-                    tokens.insert(index, Token::start_path(pos, 1));
+                    let mut token = Token::new(token.pos, TokenKind::StartPath);
+                    *token.slashes_mut() += 1;
+                    path_index += 1;
+                    tokens.insert(path_index, token);
                 }
                 word_index = tokens.len();
                 subword_index = tokens.len();
-                tokens.push(Token::start_slash_word(i + 1));
-                prev_c = c;
+                tokens.push(Token::new(
+                    i + '/'.len_utf8() as u32,
+                    TokenKind::StartSlashWord,
+                ));
+                prev_c = '\0';
             }
-            (_, '-' | '_' | '.') => {
-                *tokens[word_index].subwords_mut().unwrap() += 1;
-                *tokens[subword_index].letters_mut().unwrap() += 1;
-                subword_index = tokens.len();
-                tokens.push(Token::start_subword(i + 1, 0));
-                prev_c = c;
-            }
-            // Ignore leading zeros.
-            (c!(not_digit), '0') if matches!(iter.peek(), Some((_, c!(digit)))) => {
-                if skipping {
-                    tokens.pop();
-                } else {
-                    tokens.push(Token::start_skip(i));
-                }
-                let mut to = i;
-                while let Some((i, _)) = iter.next_if(|&(_, c)| c == '0') {
-                    to = i as u32;
-                }
-                let i = if let Some((i, _)) = iter.next_if(|&(_, c)| c.is_ascii_digit()) {
-                    i as u32
-                } else {
-                    to
-                };
-                tokens.push(Token::end_skip(i));
-
-                *tokens[word_index].subwords_mut().unwrap() += 1;
-                subword_index = tokens.len();
-                tokens.push(Token::start_subword(i, 1));
-                prev_c = c;
-            }
-            ('a'..='z', 'A'..='Z') | (c!(not_digit), c!(digit)) | (c!(digit), c!(not_digit)) => {
-                *tokens[word_index].subwords_mut().unwrap() += 1;
-                subword_index = tokens.len();
-                tokens.push(Token::start_subword(i, 1));
-                prev_c = c;
-            }
-            // Ignore characters that (likely) has no textual representation.
-            //
-            // https://en.wikipedia.org/wiki/Unicode_block
-            (
-                _,
-                '\u{E000}'..='\u{F8FF}'
-                | '\u{F0000}'..='\u{FFFFD}'
-                | '\u{100000}'..='\u{10FFFD}'
-                | '\u{1F000}'..='\u{1F0FF}'
-                | '\u{1F300}'..='\u{1FBFF}',
-            ) => {
-                if skipping {
-                    tokens.pop();
-                } else {
-                    tokens.push(Token::start_skip(i));
-                }
-                tokens.push(Token::end_skip(i + c.encode_utf8(&mut [0; 4]).len() as u32));
+            // Handle kebab-case, snake_case and file.ext.
+            '-' | '_' | '.' => {
+                add_subword_to_word!();
+                add_letter_to_subword!();
+                start_subword!(i + 1);
+                prev_c = '\0';
             }
             // Ignore SGR escape sequences.
-            (_, '\x1b') => {
-                if skipping {
-                    tokens.pop();
-                } else {
-                    tokens.push(Token::start_skip(i));
-                }
-                let to = if let Some((i, _)) = iter.find(|(_, c)| *c == 'm') {
-                    i as u32 + 1
+            '\x1b' => {
+                skip!(if let Some((i, _)) = iter.find(|(_, c)| *c == 'm') {
+                    i as u32 + 'm'.len_utf8() as u32
                 } else {
                     s.len() as u32
-                };
-                tokens.push(Token::end_skip(to));
+                });
+            }
+            // Ignore characters that (likely) has no textual representation, e.g. icons from Nerd
+            // Fonts.
+            '\u{E000}'..='\u{F8FF}'
+            | '\u{F0000}'..='\u{FFFFD}'
+            | '\u{100000}'..='\u{10FFFD}'
+            | '\u{1F000}'..='\u{1F0FF}'
+            | '\u{1F300}'..='\u{1FBFF}' => {
+                skip!(i + c.len_utf8() as u32);
+            }
+            // Ignore leading zeros.
+            '0' if !prev_c.is_ascii_digit() && is_next_ascii_digit(&iter) => {
+                skip!({
+                    let mut to = i;
+                    while let Some(i) = next_if_ascii_leading_zero(&mut iter) {
+                        to = i as u32;
+                    }
+                    to + '0'.len_utf8() as u32
+                });
+            }
+            // Handle word breaks.
+            _ if (prev_c == ' ' || prev_c.is_ascii_punctuation())
+                && (c.is_alphabetic() || c.is_ascii_digit()) =>
+            {
+                debug_assert!(!matches!(prev_c, '\t' | '/' | '-' | '_' | '.'));
+                path_index = tokens.len();
+                word_index = tokens.len();
+                subword_index = tokens.len();
+                tokens.push(Token::new(i, TokenKind::StartWord));
+                add_letter_to_subword!();
+                prev_c = c;
+            }
+            // Handle camelCase.
+            _ if prev_c.is_lowercase() && c.is_uppercase() => {
+                add_subword_to_word!();
+                start_subword!(i);
+                add_letter_to_subword!();
+                prev_c = c;
+            }
+            // Handle abc100 and 100abc.
+            _ if (prev_c != '\0' && !prev_c.is_ascii_digit() && c.is_ascii_digit())
+                || (prev_c.is_ascii_digit() && !c.is_ascii_digit()) =>
+            {
+                // FIXME: Same as above but merging them results in worse performance. Check why.
+                add_subword_to_word!();
+                start_subword!(i);
+                add_letter_to_subword!();
+                prev_c = c;
             }
             _ => {
-                *tokens[subword_index].letters_mut().unwrap() += 1;
+                add_letter_to_subword!();
                 prev_c = c;
             }
         }
     }
 
-    tokens.push(Token::end(s.len() as u32));
+    tokens.push(Token::new(s.len() as u32, TokenKind::End));
 
     #[cfg(test)]
     println!("{:?}", tokens);
@@ -472,12 +428,16 @@ pub fn find_fuzzy<'m>(
 ) -> Option<Match<'m>> {
     let Haystack { value, tokens, .. } = haystack;
 
+    debug_assert!(matches!(
+        tokens.first().unwrap().kind,
+        TokenKind::StartField
+    ));
     debug_assert!(matches!(tokens.last().unwrap().kind, TokenKind::End));
     debug_assert!(tokens.last().unwrap().pos as usize == haystack.value().len());
 
-    let mut cur_token = 0;
-    // SAFETY: `tokens` is terminated by `TokenKind::End` thus has at least one item.
-    let mut next_pos = unsafe { tokens.get_unchecked(cur_token) }.pos as usize;
+    let mut token_index = 0;
+    debug_assert!(tokens.first().unwrap().pos == 0);
+    let mut next_token_pos = 0;
 
     let mut slash = Saturating(0);
     let mut word = 0_u32;
@@ -496,54 +456,48 @@ pub fn find_fuzzy<'m>(
     let mut i = 0;
 
     'outer: loop {
-        while i >= next_pos {
-            // SAFETY: `tokens` has already been indexed by `cur_token`.
-            let token = unsafe { tokens.get_unchecked(cur_token) };
-            cur_token += 1;
+        while i >= next_token_pos {
+            let token = unsafe { tokens.get_unchecked(token_index) };
+            token_index += 1;
 
             match token.kind {
                 TokenKind::StartField => {
                     field += 1;
                     word = 0;
                     subword = 0;
+                    subwords = token.subwords();
                     letter = 0;
+                    letters = token.letters();
                 }
-                TokenKind::StartWord {
-                    subwords: x,
-                    letters: y,
-                } => {
+                TokenKind::StartWord => {
                     word += 1;
                     subword = 0;
-                    subwords = x;
+                    subwords = token.subwords();
                     letter = 0;
-                    letters = y;
+                    letters = token.letters();
                 }
-                TokenKind::StartSubword { letters: y } => {
+                TokenKind::StartSubword => {
                     subword += 1;
                     subwords -= 1;
                     letter = 0;
-                    letters = y;
+                    letters = token.letters();
                 }
-                TokenKind::StartPath { slashes: x } => {
-                    slash = x;
+                TokenKind::StartPath => {
+                    slash = token.slashes();
                     slashes = slash;
                 }
-                TokenKind::StartSlashWord {
-                    subwords: x,
-                    letters: y,
-                } => {
+                TokenKind::StartSlashWord => {
                     slash -= 1;
                     subword = 0;
-                    subwords = x;
+                    subwords = token.subwords();
                     letter = 0;
-                    letters = y;
+                    letters = token.letters();
                 }
                 TokenKind::StartSkip => {
-                    // SAFETY: Always followed by `TokenKind::EndSkip`.
-                    let end_skip = unsafe { tokens.get_unchecked(cur_token) };
+                    let end_skip = unsafe { tokens.get_unchecked(token_index) };
                     debug_assert!(matches!(end_skip.kind, TokenKind::EndSkip));
                     i = end_skip.pos as usize;
-                    cur_token += 1;
+                    token_index += 1;
                 }
                 TokenKind::EndSkip => {
                     // Skipped by `TokenKind::StartSkip`.
@@ -554,9 +508,7 @@ pub fn find_fuzzy<'m>(
                 }
             }
 
-            // SAFETY: `tokens` is terminated by `TokenKind::End`. When `TokenKind::End` seen loop
-            // is terminated.
-            next_pos = unsafe { tokens.get_unchecked(cur_token) }.pos as usize;
+            next_token_pos = unsafe { tokens.get_unchecked(token_index) }.pos as usize;
         }
 
         // SAFETY:
@@ -596,15 +548,17 @@ pub fn find_fuzzy<'m>(
             let must_cont = letter > 1;
             let head = cont || !must_cont;
 
-            let match_score = (7_u64.saturating_sub(if y == 0 {
-                0
-            } else {
-                // Gap penalty.
-                // FIXME: Should ignore skipped ranges but currently only byte offsets are
-                // persisted. We would need global letter positions. However it probably does not
-                // worth it, it is good enough.
-                u64::from(i as u32 - memory.y_ranges[y - 1][y - 1].end) / 32
-            }) << 33)
+            let match_score = (15_u64.saturating_sub(if head { u64::from(field) } else { 16 })
+                << 36)
+                + (7_u64.saturating_sub(if y == 0 {
+                    0
+                } else {
+                    // Gap penalty.
+                    // FIXME: Should ignore skipped ranges but currently only byte offsets are
+                    // persisted. We would need global letter positions. However it probably does not
+                    // worth it, it is good enough.
+                    u64::from(i as u32 - memory.y_ranges[y - 1][y - 1].end) / 32
+                }) << 33)
                 + (15_u64.saturating_sub(if head { u64::from(slash.0) } else { 16 }) << 29)
                 + (31_u64.saturating_sub(if head { u64::from(subword) } else { 32 }) << 24)
                 + (15_u64.saturating_sub(if head { 0 } else { u64::from(letter) }) << 20)
@@ -673,9 +627,9 @@ pub fn find_exact<'m>(
     debug_assert!(matches!(tokens.last().unwrap().kind, TokenKind::End));
     debug_assert!(tokens.last().unwrap().pos as usize == haystack.value().len());
 
-    let mut cur_token = 0;
-    // SAFETY: `tokens` is terminated by `TokenKind::End` thus has at least one item.
-    let mut next_pos = unsafe { tokens.get_unchecked(cur_token) }.pos as usize;
+    let mut token_index = 0;
+    debug_assert!(tokens.first().unwrap().pos == 0);
+    let mut next_token_pos = 0;
 
     let mut prev_matches = 0_u32;
     let pat_match = 1 << (pat.len.get() - 1);
@@ -686,18 +640,17 @@ pub fn find_exact<'m>(
     let mut k = 0;
 
     'outer: loop {
-        while i >= next_pos {
-            // SAFETY: `tokens` has already been indexed by `cur_token`.
-            let token = unsafe { tokens.get_unchecked(cur_token) };
-            cur_token += 1;
+        while i >= next_token_pos {
+            let token = unsafe { tokens.get_unchecked(token_index) };
+            token_index += 1;
 
             match token.kind {
                 TokenKind::StartSkip => {
                     // SAFETY: Always followed by `TokenKind::EndSkip`.
-                    let end_skip = unsafe { tokens.get_unchecked(cur_token) };
+                    let end_skip = unsafe { tokens.get_unchecked(token_index) };
                     debug_assert!(matches!(end_skip.kind, TokenKind::EndSkip));
                     i = end_skip.pos as usize;
-                    cur_token += 1;
+                    token_index += 1;
                 }
                 TokenKind::End => {
                     break 'outer;
@@ -705,9 +658,7 @@ pub fn find_exact<'m>(
                 _ => {}
             }
 
-            // SAFETY: `tokens` is terminated by `TokenKind::End`. When `TokenKind::End` seen loop
-            // is terminated.
-            next_pos = unsafe { tokens.get_unchecked(cur_token) }.pos as usize;
+            next_token_pos = unsafe { tokens.get_unchecked(token_index) }.pos as usize;
         }
 
         // SAFETY:
@@ -813,12 +764,8 @@ mod tests {
             haystacks.reverse();
             haystacks.sort_by_cached_key(|haystack| {
                 println!();
-                let m = find_fuzzy(
-                    &Haystack::parse(&haystack, Scheme::ShellHistory).as_ref(),
-                    &pat,
-                    &mut memory,
-                )
-                .unwrap();
+                let m =
+                    find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
                 println!("{}: {:?} {:?}", haystack, m.score(), m.start());
                 std::cmp::Reverse(m.score())
             });
@@ -841,12 +788,8 @@ mod tests {
             .iter()
             .map(|haystack| {
                 println!();
-                let m = find_fuzzy(
-                    &Haystack::parse(&haystack, Scheme::ShellHistory).as_ref(),
-                    &pat,
-                    &mut memory,
-                )
-                .unwrap();
+                let m =
+                    find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
                 println!("{}: {:?} {:?}", haystack, m.score(), m.start());
                 m.score()
             })
@@ -866,12 +809,7 @@ mod tests {
             .iter()
             .filter(|haystack| {
                 println!();
-                find_fuzzy(
-                    &Haystack::parse(&haystack, Scheme::ShellHistory).as_ref(),
-                    &pat,
-                    &mut memory,
-                )
-                .is_some()
+                find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).is_some()
             })
             .copied()
             .collect::<Vec<_>>();
@@ -895,12 +833,7 @@ mod tests {
         let mut memory = Memory::default();
 
         println!();
-        let m = find_fuzzy(
-            &Haystack::parse(&haystack, Scheme::ShellHistory).as_ref(),
-            &pat,
-            &mut memory,
-        )
-        .unwrap();
+        let m = find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
 
         let actual_ranges = (0..m.ranges_len()).map(|i| m.range(i)).collect::<Vec<_>>();
 
@@ -919,7 +852,7 @@ mod tests {
 
         println!();
         let m = find_exact(
-            &Haystack::parse(&haystack, Scheme::ShellHistory).as_ref(),
+            &Haystack::parse(&haystack).as_ref(),
             &pat,
             anchor_start,
             anchor_end,
@@ -942,18 +875,8 @@ mod tests {
     fn empty_haystack() {
         let pat = Pattern::new("x").unwrap();
         let mut memory = Memory::default();
-        assert!(find_fuzzy(
-            &Haystack::parse("", Scheme::ShellHistory).as_ref(),
-            &pat,
-            &mut memory
-        )
-        .is_none());
-        assert!(find_fuzzy(
-            &Haystack::parse("x", Scheme::ShellHistory).as_ref(),
-            &pat,
-            &mut memory
-        )
-        .is_some());
+        assert!(find_fuzzy(&Haystack::parse("").as_ref(), &pat, &mut memory).is_none());
+        assert!(find_fuzzy(&Haystack::parse("x").as_ref(), &pat, &mut memory).is_some());
     }
 
     #[test]
@@ -976,8 +899,15 @@ mod tests {
         assert_order("abcd", &["a_b_c/d", "a/xab_c_d"]);
         assert_order("abc", &["ax_bx/cx.x", "ax_bx/bc/x"]);
         assert_order("abc", &["ax_bx/cx.x", "ab.xc"]);
-        assert_order("a1", &["\ta1\t", "\tA\t1"]);
-        assert_equal("1", &["001", "1"]);
+        assert_order("ab", &["x\ta\tb", "x\tx\tab"]);
+        assert_order("ab", &["a\tb", "x\tab"]);
+        assert_order("ab", &["a\tb", "\tab"]);
+        assert_order("a1", &["a1", "a_1"]);
+        assert_equal("a1", &["a_1", "a10"]);
+        assert_equal("1a", &["1_a", "10a"]);
+        assert_order("a1", &["\ta1\t", "\ta\t1"]);
+        assert_equal("1", &["1", "01", "001", "0001"]);
+        assert_equal("9", &["9", "09", "009", "0009"]);
         assert_order("1", &["01", "_1"]);
         assert_order("1", &["1", "10", "101", "21"]);
         assert_order("12", &["012", "120", "102", "1002"]);
@@ -987,6 +917,7 @@ mod tests {
         assert_order("a", &["a_x/x", "a_x_x/x"]);
         assert_order("a", &["xxx xxx xxx a", "x/a"]);
         assert_order("a", &["xxx\tax", "xa\tx"]);
+        assert_order("a", &["xa\txx", "xx\txa"]);
         assert_order("abcd", &["ab abcd/cd", "ab abcd/xx"]);
         assert_order("b", &["a\tbc", "ab\tc"]);
         assert_equal(
@@ -996,6 +927,7 @@ mod tests {
                 "ab",
             ],
         );
+        assert_equal("1a", &["1\u{e000}a", "1a"]);
         assert_order("abc", &["abc", "a    bc", "a b c"]);
         assert_order(
             "ab",
@@ -1006,16 +938,24 @@ mod tests {
                 &format!("a{x} b{x}", x = "x".repeat(100)),
             ],
         );
+        assert_equal("ab", &["a\x1bmb", "ab"]);
         assert_equal("ab", &["Ax\x1b[mB", "AxB"]);
+        assert_equal("10", &["1\x1bm0", "10"]);
+        assert_equal("1a", &["1\x1bma", "1a"]);
+        assert_order("1", &["1", "x 1", "1 x", "1_x", "x_1"]);
+        assert_equal("a", &["1a", "1_a"]);
         assert_equal("a", &["a.b", "a.bx", "a.bxx"]);
         assert_order("ab", &["a.b", "a.bx", "a.bxx"]);
         assert_equal("ab", &["a-b", "A-B", "a_b", "A_B", "AxB"]);
         assert_equal("ab", &["-a-b", "xAxB"]);
+        assert_equal("a", &["aAaA", "áÁáÁ"]);
         assert_order("bc", &["ab/b/c", "ab/x_c"]);
         assert_order("abc", &["ab/x_c", "ab/b/c"]);
         assert_order("abc", &["aBxxBc", "aXbc"]);
         assert_order("abcd", &["AbBcd", "AbBcD", "AbCxd"]);
-        assert_order("a", &["xx@a", "xa"]);
+        for c in (0..=127).map(char::from).filter(char::is_ascii_punctuation) {
+            assert_order("a", &[&format!("xx{c}a"), "xa"]);
+        }
     }
 
     #[test]
