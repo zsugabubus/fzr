@@ -149,11 +149,6 @@ mod tests {
 
     const MAX_LEN: usize = 31;
 
-    const a: u32 = 1 << 0;
-    const A: u32 = 1 << 1;
-    const aacute: u32 = 1 << 2;
-    const Aacute: u32 = 1 << 3;
-
     #[test]
     fn empty() {
         assert_eq!(Pattern::new("").unwrap_err(), PatternError::Empty);
@@ -186,62 +181,67 @@ mod tests {
         assert_eq!(pat.map.parse_str("á"), Some((2, (1 << MAX_LEN) - 1)));
     }
 
-    fn case_matches(case_sensitivity: CaseSensitivity) -> (u32, u32, u32, u32) {
-        let pat = PatternBuilder::new()
-            .case_sensitivity(case_sensitivity)
-            .romanize_unicode(true)
-            .build("aAáÁ")
-            .unwrap();
-        (
-            pat.map.parse_str("a").unwrap().1,
-            pat.map.parse_str("A").unwrap().1,
-            pat.map.parse_str("á").unwrap().1,
-            pat.map.parse_str("Á").unwrap().1,
-        )
-    }
-
     #[test]
-    fn case_sensitive() {
-        assert_eq!(
-            case_matches(CaseSensitivity::Sensitive),
-            (a, A, a | aacute, A | Aacute)
+    fn romanize_unicode_and_case_sensitivity() {
+        use CaseSensitivity::*;
+
+        const a: u32 = 1 << 0;
+        const A: u32 = 1 << 1;
+        const aacute: u32 = 1 << 2;
+        const Aacute: u32 = 1 << 3;
+
+        fn check(
+            romanize_unicode: bool,
+            case_sensitivity: CaseSensitivity,
+            expected: (u32, u32, u32, u32),
+        ) {
+            let pat = PatternBuilder::new()
+                .romanize_unicode(romanize_unicode)
+                .case_sensitivity(case_sensitivity)
+                .build("aAáÁ")
+                .unwrap();
+            assert_eq!(
+                (
+                    pat.map.parse_str("a").unwrap().1,
+                    pat.map.parse_str("A").unwrap().1,
+                    pat.map.parse_str("á").unwrap().1,
+                    pat.map.parse_str("Á").unwrap().1,
+                ),
+                expected
+            );
+        }
+
+        check(false, Sensitive, (a, A, aacute, Aacute));
+        check(
+            false,
+            Insensitive,
+            (a | A, a | A, aacute | Aacute, aacute | Aacute),
         );
-    }
-
-    #[test]
-    fn case_ascii_insensitive() {
-        assert_eq!(
-            case_matches(CaseSensitivity::AsciiInsensitive),
-            (a | A, a | A, a | A | aacute, a | A | Aacute)
+        check(true, Sensitive, (a, A, a | aacute, A | Aacute));
+        check(
+            true,
+            AsciiInsensitive,
+            (a | A, a | A, a | A | aacute, a | A | Aacute),
         );
-    }
-
-    #[test]
-    fn case_lower_ascii_insensitive() {
-        assert_eq!(
-            case_matches(CaseSensitivity::LowerAsciiInsensitive),
-            (a, a | A, a | aacute, a | A | Aacute)
+        check(
+            true,
+            LowerAsciiInsensitive,
+            (a, a | A, a | aacute, a | A | Aacute),
         );
-    }
-
-    #[test]
-    fn case_insensitive() {
-        assert_eq!(
-            case_matches(CaseSensitivity::Insensitive),
+        check(
+            true,
+            Insensitive,
             (
                 a | A,
                 a | A,
                 a | A | aacute | Aacute,
-                a | A | aacute | Aacute
-            )
+                a | A | aacute | Aacute,
+            ),
         );
-    }
-
-    #[test]
-    fn case_lower_insensitive() {
-        assert_eq!(
-            case_matches(CaseSensitivity::LowerInsensitive),
-            (a, a | A, a | aacute, a | A | aacute | Aacute)
+        check(
+            true,
+            LowerInsensitive,
+            (a, a | A, a | aacute, a | A | aacute | Aacute),
         );
     }
 
