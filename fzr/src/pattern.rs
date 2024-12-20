@@ -169,6 +169,12 @@ mod tests {
     }
 
     #[test]
+    fn huge() {
+        assert!(Pattern::new(('a'..='z').collect::<String>()).is_ok());
+        assert!(Pattern::new(('A'..='Z').collect::<String>()).is_ok());
+    }
+
+    #[test]
     fn all_match_ascii() {
         let pat = Pattern::new("a".repeat(MAX_LEN)).unwrap();
         assert_eq!(pat.map.parse_str("a"), Some((1, (1 << MAX_LEN) - 1)));

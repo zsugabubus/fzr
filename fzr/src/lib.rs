@@ -939,12 +939,6 @@ mod tests {
     }
 
     #[test]
-    fn huge_pattern() {
-        assert!(Pattern::new(('a'..='z').collect::<String>().as_str()).is_ok());
-        assert!(Pattern::new(('A'..='Z').collect::<String>().as_str()).is_ok());
-    }
-
-    #[test]
     fn empty_haystack() {
         let pat = Pattern::new("x").unwrap();
         let mut memory = Memory::default();

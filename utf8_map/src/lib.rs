@@ -295,33 +295,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_str() {
-        #[track_caller]
-        fn assert(c: char) {
-            let s = format!("{}", c);
-            let len = c.encode_utf8(&mut [0; 4]).len();
+    fn test_parse_str() {
+        fn check(input: char) {
+            let s = format!("{}", input);
 
             let builder = Utf8MapBuilder::new();
-            assert_eq!(builder.build().parse_str(&s), Some((len, 0)));
+            assert_eq!(builder.build().parse_str(&s), Some((input.len_utf8(), 0)));
 
             let mut builder = Utf8MapBuilder::new();
-            builder.insert(c, 1);
-            builder.insert(c, 2);
-            assert_eq!(builder.build().parse_str(&s), Some((len, 1 | 2)));
+            builder.insert(input, 1);
+            builder.insert(input, 2);
+            assert_eq!(
+                builder.build().parse_str(&s),
+                Some((input.len_utf8(), 1 | 2))
+            );
         }
 
         assert_eq!(Utf8MapBuilder::new().build().parse_str(""), None);
 
-        assert('\u{0}');
-        assert('\u{7F}');
+        check('\u{0}');
+        check('\u{7F}');
 
-        assert('\u{80}');
-        assert('\u{7FF}');
+        check('\u{80}');
+        check('\u{7FF}');
 
-        assert('\u{800}');
-        assert('\u{FFFF}');
+        check('\u{800}');
+        check('\u{FFFF}');
 
-        assert('\u{10000}');
-        assert('\u{10FFFF}');
+        check('\u{10000}');
+        check('\u{10FFFF}');
     }
 }

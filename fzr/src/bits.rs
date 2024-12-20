@@ -30,13 +30,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn one_bits_rev() {
-        assert_eq!(&1.one_bits_rev().collect::<Vec<_>>()[..], &[0]);
-        assert_eq!(&(1 << 31).one_bits_rev().collect::<Vec<_>>()[..], &[31]);
-        assert_eq!(u32::MAX.one_bits_rev().count(), 32);
-        assert_eq!(
-            &((1 << 31) | 1).one_bits_rev().collect::<Vec<_>>()[..],
-            &[31, 0]
-        );
+    fn test_one_bits_rev() {
+        fn check(input: u32, expected: &[u32]) {
+            assert_eq!(input.one_bits_rev().collect::<Box<_>>().as_ref(), expected);
+        }
+
+        check(u32::MIN, &[]);
+        check(1, &[0]);
+        check(1 << 31, &[31]);
+        check((1 << 31) | 1, &[31, 0]);
+        check(u32::MAX, &(0..32).rev().collect::<Box<_>>());
     }
 }
