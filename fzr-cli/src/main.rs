@@ -456,16 +456,16 @@ fn interactive(
 }
 
 fn editor(query: &mut String, searcher: &mut Searcher, cur: usize) {
-    let mut file = tempfile::NamedTempFile::with_prefix("fzr").unwrap();
+    let (file, path) = tempfile::NamedTempFile::with_prefix("fzr")
+        .unwrap()
+        .into_parts();
+    let mut stream = BufWriter::new(file);
 
     for i in 0..searcher.matches_len() {
-        file.write_all(searcher.get_str(i).as_bytes()).unwrap();
-        file.write_all(b"\n").unwrap();
+        writeln!(stream, "{}", searcher.get_str(i)).unwrap();
     }
 
-    file.flush().unwrap();
-
-    let path = file.into_temp_path();
+    stream.flush().unwrap();
 
     if !Command::new("sh")
         .stdin(dev_tty())
