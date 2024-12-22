@@ -44,7 +44,7 @@ impl Score {
     #[inline]
     #[must_use]
     pub fn exact_match() -> Self {
-        Self(NonZeroU64::new(1 << 40).unwrap())
+        Self(NonZeroU64::new(1 << 45).unwrap())
     }
 
     /// Returns the higher score.
@@ -766,7 +766,8 @@ mod tests {
                 println!();
                 let m =
                     find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
-                println!("{}: {:?} {:?}", haystack, m.score(), m.start());
+                println!("{}: {:?}", haystack, m.score());
+                assert!(m.score() < Score::exact_match());
                 std::cmp::Reverse(m.score())
             });
             haystacks
@@ -790,7 +791,8 @@ mod tests {
                 println!();
                 let m =
                     find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
-                println!("{}: {:?} {:?}", haystack, m.score(), m.start());
+                println!("{}: {:?}", haystack, m.score());
+                assert!(m.score() < Score::exact_match());
                 m.score()
             })
             .collect::<Vec<_>>();
@@ -809,7 +811,13 @@ mod tests {
             .iter()
             .filter(|haystack| {
                 println!();
-                find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).is_some()
+                if let Some(m) = find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory)
+                {
+                    assert!(m.score() < Score::exact_match());
+                    true
+                } else {
+                    false
+                }
             })
             .copied()
             .collect::<Vec<_>>();
@@ -834,6 +842,7 @@ mod tests {
 
         println!();
         let m = find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
+        assert!(m.score() < Score::exact_match());
 
         let actual_ranges = (0..m.ranges_len()).map(|i| m.range(i)).collect::<Vec<_>>();
 
