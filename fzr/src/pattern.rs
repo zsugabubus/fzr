@@ -129,6 +129,7 @@ impl Default for PatternBuilder {
     }
 }
 
+/// Pattern.
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub(crate) map: Utf8Map,

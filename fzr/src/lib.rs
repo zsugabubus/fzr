@@ -6,14 +6,11 @@
 //! use fzr::*;
 //!
 //! let mut memory = Memory::new();
+//! let pat = Pattern::new("fb").unwrap();
+//! let haystack = Haystack::parse("foobar");
 //!
-//! let needle = Pattern::new("o").unwrap();
-//!
-//! let haystack = Haystack::parse("fóo");
-//!
-//! let m = find_fuzzy(&haystack.as_ref(), &needle, &mut memory).unwrap();
-//! assert_eq!(m.ranges_len(), 1);
-//! assert_eq!(m.range(0), 1..3);
+//! assert!(find_fuzzy(&haystack.as_ref(), &pat, &mut memory).is_some());
+//! assert!(find_exact(&haystack.as_ref(), &pat, false, false, &mut memory).is_none());
 //! ```
 use std::{
     fmt,
@@ -32,7 +29,7 @@ use crate::bits::BitsExt;
 
 /// Represents match score.
 ///
-/// It can be retreived from the [`score`][Match::score] method on a [`Match`].
+/// It can be retreived from the [`Match::score`] method.
 ///
 /// Higher score means better match. Exact match has the highest score.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -418,7 +415,7 @@ pub fn parse_haystack(s: &str, tokens: &mut Vec<Token>) {
     println!("{:?}", tokens);
 }
 
-/// Finds needle in haystack using a fuzzy matching algorithm.
+/// Finds pattern using a fuzzy matching algorithm.
 ///
 /// Returns [`Some`] if matched, [`None`] otherwise.
 pub fn find_fuzzy<'m>(
@@ -612,7 +609,7 @@ pub fn find_fuzzy<'m>(
     }
 }
 
-/// Finds needle in haystack using an exact matching algorithm.
+/// Finds pattern using an exact matching algorithm.
 ///
 /// Returns [`Some`] if matched, [`None`] otherwise.
 pub fn find_exact<'m>(
@@ -712,40 +709,80 @@ pub struct Match<'m> {
 }
 
 impl Match<'_> {
-    /// Returns match score.
+    /// Returns the score of the match.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use fzr::{Memory, Pattern, Haystack, find_fuzzy};
+    ///
+    /// let mut memory = Memory::new();
+    /// let b = Pattern::new("b").unwrap();
+    /// let bar = Haystack::parse("bar");
+    /// let foobar = Haystack::parse("foobar");
+    ///
+    /// let bar_score = find_fuzzy(&bar.as_ref(), &b, &mut memory).unwrap().score();
+    /// let foobar_score = find_fuzzy(&foobar.as_ref(), &b, &mut memory).unwrap().score();
+    /// assert!(bar_score > foobar_score);
+    /// ```
     pub fn score(&self) -> Score {
         self.score
     }
 
-    /// Returns number of matching ranges.
-    #[inline]
-    pub fn ranges_len(&self) -> usize {
-        self.ranges.len()
-    }
-
-    /// Returns byte positions for range.
+    /// Returns an iterator over the matched byte ranges of the haystack.
     ///
-    /// # Panics
+    /// # Example
     ///
-    /// Panics if `index` is outside `0..Self::ranges_len()`.
+    /// ```
+    /// use fzr::{Memory, Pattern, Haystack, find_fuzzy};
+    ///
+    /// let mut memory = Memory::new();
+    /// let fb = Pattern::new("fb").unwrap();
+    /// let foobar = Haystack::parse("foobar");
+    ///
+    /// let m = find_fuzzy(&foobar.as_ref(), &fb, &mut memory).unwrap();
+    /// assert_eq!(m.ranges().len(), 2);
+    /// assert_eq!(&m.ranges().collect::<Vec<_>>(), &[0..1, 3..4]);
+    /// ```
     #[inline]
-    pub fn range(&self, index: usize) -> Range<usize> {
-        let range = &self.ranges[index];
-        range.start as usize..range.end as usize
-    }
-
-    /// Returns first matching byte position.
-    #[inline]
-    pub fn start(&self) -> usize {
-        self.ranges.first().unwrap().start as usize
-    }
-
-    /// Returns last matching byte position.
-    #[inline]
-    pub fn end(&self) -> usize {
-        self.ranges.last().unwrap().end as usize
+    pub fn ranges(&self) -> Ranges {
+        Ranges {
+            index: 0,
+            ranges: self.ranges,
+        }
     }
 }
+
+/// An iterator over the ranges of a [`Match`].
+///
+/// This struct is created by the [`Match::ranges`] method.
+pub struct Ranges<'m> {
+    index: usize,
+    ranges: &'m [Range<u32>],
+}
+
+impl Iterator for Ranges<'_> {
+    type Item = Range<usize>;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        fn cast(range: &Range<u32>) -> Range<usize> {
+            range.start as usize..range.end as usize
+        }
+
+        let index = self.index;
+        self.index += 1;
+        self.ranges.get(index).map(cast)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let rem = self.ranges.len() - self.index;
+        (rem, Some(rem))
+    }
+}
+
+impl ExactSizeIterator for Ranges<'_> {}
 
 #[cfg(test)]
 #[allow(clippy::single_range_in_vec_init)]
@@ -753,10 +790,10 @@ mod tests {
     use super::*;
 
     #[track_caller]
-    fn assert_order(needle: &str, haystacks: &[&str]) {
+    fn assert_order(pat: &str, haystacks: &[&str]) {
         assert!(haystacks.len() > 1);
 
-        let pat = Pattern::new(needle).unwrap();
+        let pat = Pattern::new(pat).unwrap();
         let mut memory = Memory::default();
 
         let actual_order = {
@@ -779,10 +816,10 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_equal(needle: &str, haystacks: &[&str]) {
+    fn assert_equal(pat: &str, haystacks: &[&str]) {
         assert!(haystacks.len() > 1);
 
-        let pat = Pattern::new(needle).unwrap();
+        let pat = Pattern::new(pat).unwrap();
         let mut memory = Memory::default();
 
         let actual_scores = haystacks
@@ -803,8 +840,8 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_filter(needle: &str, haystacks: &[&str], expected_matches: &[&str]) {
-        let pat = Pattern::new(needle).unwrap();
+    fn assert_filter(pat: &str, haystacks: &[&str], expected_matches: &[&str]) {
+        let pat = Pattern::new(pat).unwrap();
         let mut memory = Memory::default();
 
         let actual_matches = haystacks
@@ -826,37 +863,37 @@ mod tests {
     }
 
     #[track_caller]
-    fn assert_accepts(needle: &str, haystack: &str) {
-        assert_filter(needle, &[haystack], &[haystack]);
+    fn assert_accepts(pat: &str, haystack: &str) {
+        assert_filter(pat, &[haystack], &[haystack]);
     }
 
     #[track_caller]
-    fn assert_rejects(needle: &str, haystack: &str) {
-        assert_filter(needle, &[haystack], &[]);
+    fn assert_rejects(pat: &str, haystack: &str) {
+        assert_filter(pat, &[haystack], &[]);
     }
 
     #[track_caller]
-    fn assert_ranges(needle: &str, haystack: &str, expected_ranges: &[Range<usize>]) {
-        let pat = Pattern::new(needle).unwrap();
+    fn assert_ranges(pat: &str, haystack: &str, expected_ranges: &[Range<usize>]) {
+        let pat = Pattern::new(pat).unwrap();
         let mut memory = Memory::default();
 
         println!();
         let m = find_fuzzy(&Haystack::parse(&haystack).as_ref(), &pat, &mut memory).unwrap();
         assert!(m.score() < Score::exact_match());
 
-        let actual_ranges = (0..m.ranges_len()).map(|i| m.range(i)).collect::<Vec<_>>();
+        let actual_ranges = m.ranges().collect::<Vec<_>>();
 
         assert_eq!(&actual_ranges, expected_ranges);
     }
 
     #[track_caller]
     fn assert_exact(
-        needle: &str,
+        pat: &str,
         (anchor_start, anchor_end): (bool, bool),
         haystack: &str,
         expected_ranges: Option<&[Range<usize>]>,
     ) {
-        let pat = Pattern::new(needle).unwrap();
+        let pat = Pattern::new(pat).unwrap();
         let mut memory = Memory::default();
 
         println!();
@@ -872,7 +909,7 @@ mod tests {
             assert!(m.is_some());
             let m = m.unwrap();
 
-            let actual_ranges = (0..m.ranges_len()).map(|i| m.range(i)).collect::<Vec<_>>();
+            let actual_ranges = m.ranges().collect::<Vec<_>>();
 
             assert_eq!(&actual_ranges, expected_ranges);
         } else {
