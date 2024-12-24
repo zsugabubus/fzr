@@ -536,64 +536,66 @@ pub fn find_fuzzy<'m>(
         let old_prev_matches = prev_matches;
         prev_matches = 0;
 
-        for y in matches.one_bits_rev() {
-            let y = y as usize;
+        if matches != 0 {
+            for y in matches.one_bits_rev() {
+                let y = y as usize;
 
-            let prefix_score = y_max[y];
+                let prefix_score = y_max[y];
 
-            let cont = (old_prev_matches & (1 << y)) != 0;
-            let must_cont = letter > 1;
-            let head = cont || !must_cont;
+                let cont = (old_prev_matches & (1 << y)) != 0;
+                let must_cont = letter > 1;
+                let head = cont || !must_cont;
 
-            let match_score = (15_u64.saturating_sub(if head { u64::from(field) } else { 16 })
-                << 36)
-                + (7_u64.saturating_sub(if y == 0 {
-                    0
-                } else {
-                    // Gap penalty.
-                    // FIXME: Should ignore skipped ranges but currently only byte offsets are
-                    // persisted. We would need global letter positions. However it probably does not
-                    // worth it, it is good enough.
-                    u64::from(i as u32 - memory.y_ranges[y - 1][y - 1].end) / 32
-                }) << 33)
-                + (15_u64.saturating_sub(if head { u64::from(slash.0) } else { 16 }) << 29)
-                + (31_u64.saturating_sub(if head { u64::from(subword) } else { 32 }) << 24)
-                + (15_u64.saturating_sub(if head { 0 } else { u64::from(letter) }) << 20)
-                + (7_u64.saturating_sub(u64::from(subwords.0)) << 17)
-                + (7_u64.saturating_sub(u64::from(slashes.0)) << 14)
-                + (63_u64.saturating_sub(u64::from(word)) << 8)
-                + (15_u64.saturating_sub(u64::from(field)) << 4)
-                + 15_u64.saturating_sub(u64::from(letters.0));
+                let match_score = (15_u64.saturating_sub(if head { u64::from(field) } else { 16 })
+                    << 36)
+                    + (7_u64.saturating_sub(if y == 0 {
+                        0
+                    } else {
+                        // Gap penalty.
+                        // FIXME: Should ignore skipped ranges but currently only byte offsets are
+                        // persisted. We would need global letter positions. However it probably does not
+                        // worth it, it is good enough.
+                        u64::from(i as u32 - memory.y_ranges[y - 1][y - 1].end) / 32
+                    }) << 33)
+                    + (15_u64.saturating_sub(if head { u64::from(slash.0) } else { 16 }) << 29)
+                    + (31_u64.saturating_sub(if head { u64::from(subword) } else { 32 }) << 24)
+                    + (15_u64.saturating_sub(if head { 0 } else { u64::from(letter) }) << 20)
+                    + (7_u64.saturating_sub(u64::from(subwords.0)) << 17)
+                    + (7_u64.saturating_sub(u64::from(slashes.0)) << 14)
+                    + (63_u64.saturating_sub(u64::from(word)) << 8)
+                    + (15_u64.saturating_sub(u64::from(field)) << 4)
+                    + 15_u64.saturating_sub(u64::from(letters.0));
 
-            let total_score = prefix_score + match_score;
+                let total_score = prefix_score + match_score;
 
-            #[cfg(test)]
-            println!(
-                "    y={} score={:6} + {:6} = {:6}{}{}",
-                y,
-                prefix_score,
-                match_score,
-                total_score,
-                if cont { " [cont]" } else { "" },
-                if must_cont { " [must cont]" } else { "" }
-            );
+                #[cfg(test)]
+                println!(
+                    "    y={} score={:6} + {:6} = {:6}{}{}",
+                    y,
+                    prefix_score,
+                    match_score,
+                    total_score,
+                    if cont { " [cont]" } else { "" },
+                    if must_cont { " [must cont]" } else { "" }
+                );
 
-            prev_matches |= if head { 2 } else { 0 } << y;
+                prev_matches |= if head { 2 } else { 0 } << y;
 
-            // Give some hints to the compiler that the most likely thing this branch will do is
-            // `continue`.
-            if total_score <= y_max[y + 1] {
-                continue;
+                // Give some hints to the compiler that the most likely thing this branch will do is
+                // `continue`.
+                if total_score <= y_max[y + 1] {
+                    continue;
+                }
+
+                y_max[y + 1] = total_score;
+                matches_mask |= (4_u32 << y).wrapping_sub(1);
+
+                #[allow(clippy::assigning_clones)]
+                if y > 0 {
+                    memory.y_ranges[y] = memory.y_ranges[y - 1].clone();
+                }
+                memory.y_ranges[y][y] = (i as u32)..(i + utf8_len) as u32;
             }
-
-            y_max[y + 1] = total_score;
-            matches_mask |= (4_u32 << y).wrapping_sub(1);
-
-            #[allow(clippy::assigning_clones)]
-            if y > 0 {
-                memory.y_ranges[y] = memory.y_ranges[y - 1].clone();
-            }
-            memory.y_ranges[y][y] = (i as u32)..(i + utf8_len) as u32;
         }
 
         i += utf8_len;
