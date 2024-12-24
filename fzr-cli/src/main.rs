@@ -90,23 +90,23 @@ struct Cli {
 fn main() {
     let cli = Cli::parse();
 
-    let read_delimiter = if cli.read0 { b'\0' } else { b'\n' };
-    let print_delimiter = if cli.print0 { b'\0' } else { b'\n' };
+    let read_delim = if cli.read0 { b'\0' } else { b'\n' };
+    let print_delim = if cli.print0 { b'\0' } else { b'\n' };
     let sort = !cli.no_sort;
 
-    let mut items = BufReader::new(io::stdin().lock())
-        .split(read_delimiter)
-        .map_while(Result::ok)
-        .map(String::from_utf8)
-        .filter_map(Result::ok);
+    let mut buf = BufReader::new(io::stdin().lock());
 
     let headers = {
         let mut headers = cli.header;
-        headers.extend(items.by_ref().take(cli.header_lines));
+        headers.extend((0..cli.header_lines).map_while(|_| {
+            let mut v = Vec::new();
+            buf.read_until(read_delim, &mut v).ok()?;
+            Some(String::from_utf8_lossy(&v).into_owned())
+        }));
         headers
     };
 
-    let mut searcher = Searcher::new(Haystacks::from_strings(items));
+    let mut searcher = Searcher::new(Haystacks::parse(buf, read_delim));
 
     let mut query = cli.query;
 
@@ -134,7 +134,7 @@ fn main() {
 
     macro_rules! print {
         ($expr:expr) => {
-            write!(stdout, "{}{}", $expr, char::from(print_delimiter)).unwrap();
+            write!(stdout, "{}{}", $expr, char::from(print_delim)).unwrap();
         };
     }
 
@@ -485,13 +485,8 @@ fn editor(query: &mut String, searcher: &mut Searcher, cur: usize) {
         return;
     }
 
-    let lines = BufReader::new(File::open(path).unwrap())
-        .split(b'\n')
-        .map_while(Result::ok)
-        .map(String::from_utf8)
-        .filter_map(Result::ok);
-
-    *searcher = Searcher::new(Haystacks::from_strings(lines));
+    let buf = BufReader::new(File::open(path).unwrap());
+    *searcher = Searcher::new(Haystacks::parse(buf, b'\n'));
     query.clear();
 }
 
@@ -653,30 +648,37 @@ struct Haystacks {
 }
 
 impl Haystacks {
-    fn from_strings<I>(iter: I) -> Self
+    fn parse<B>(mut buf: B, delim: u8) -> Self
     where
-        I: IntoIterator<Item = String>,
+        B: BufRead,
     {
         HaystacksBuilder {
             bump: Bump::new(),
             data_builder: |bump| {
+                let mut haystacks = Vec::with_capacity(128);
+                let mut bytes = Vec::with_capacity(256);
                 let mut tokens = Vec::with_capacity(64);
-                // `Vec::push` is faster than `collect` and using `Box` instead of `Vec` also makes
-                // the code slower for some reason.
-                let mut v = Vec::new();
-                iter.into_iter().for_each(|s| {
-                    let s = s.as_str();
 
-                    tokens.clear();
-                    parse_haystack(s, &mut tokens);
+                while buf.read_until(delim, &mut bytes).is_ok() {
+                    if bytes.is_empty() {
+                        break;
+                    } else if bytes[bytes.len() - 1] == delim {
+                        bytes.pop();
+                    }
+                    if let Ok(s) = std::str::from_utf8(&bytes) {
+                        tokens.clear();
+                        parse_haystack(s, &mut tokens);
 
-                    let value = &*bump.alloc_str(s);
-                    let tokens = &*bump.alloc_slice_copy(tokens.as_slice());
+                        let value = &*bump.alloc_str(s);
+                        let tokens = &*bump.alloc_slice_copy(tokens.as_slice());
 
-                    // SAFETY: `tokens` derived from `value`.
-                    v.push(unsafe { Haystack::from_parts(value, tokens) })
-                });
-                v
+                        // SAFETY: `tokens` derived from `value`.
+                        haystacks.push(unsafe { Haystack::from_parts(value, tokens) });
+                    }
+                    bytes.clear();
+                }
+
+                haystacks
             },
         }
         .build()
