@@ -448,7 +448,7 @@ pub fn find_fuzzy<'m>(
     let mut prev_matches = 1_u32;
     let mut matches_mask = 1_u32;
 
-    let mut y_max = [0_u64; 32];
+    let mut y_max = [0_u64; 33];
 
     let mut i = 0;
 
@@ -539,7 +539,7 @@ pub fn find_fuzzy<'m>(
         for y in matches.one_bits_rev() {
             let y = y as usize;
 
-            let prefix_score = if y > 0 { y_max[y - 1] } else { 0 };
+            let prefix_score = y_max[y];
 
             let cont = (old_prev_matches & (1 << y)) != 0;
             let must_cont = letter > 1;
@@ -582,11 +582,11 @@ pub fn find_fuzzy<'m>(
 
             // Give some hints to the compiler that the most likely thing this branch will do is
             // `continue`.
-            if total_score <= y_max[y] {
+            if total_score <= y_max[y + 1] {
                 continue;
             }
 
-            y_max[y] = total_score;
+            y_max[y + 1] = total_score;
             matches_mask |= (4_u32 << y).wrapping_sub(1);
 
             #[allow(clippy::assigning_clones)]
@@ -599,7 +599,7 @@ pub fn find_fuzzy<'m>(
         i += utf8_len;
     }
 
-    if let Some(score) = NonZeroU64::new(y_max[pat.len.get() - 1]) {
+    if let Some(score) = NonZeroU64::new(y_max[pat.len.get()]) {
         Some(Match {
             score: Score(score),
             ranges: &memory.y_ranges[pat.len.get() - 1][..pat.len.get()],
