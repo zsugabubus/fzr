@@ -6,7 +6,7 @@ use std::{
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Write},
     ops::{Deref, Range},
-    process::{Command, ExitCode},
+    process::Command,
     time::{Duration, Instant},
 };
 use termwiz::{
@@ -87,7 +87,7 @@ struct Cli {
     reverse: bool,
 }
 
-fn main() -> ExitCode {
+fn main() {
     let cli = Cli::parse();
 
     let read_delimiter = if cli.read0 { b'\0' } else { b'\n' };
@@ -152,11 +152,7 @@ fn main() -> ExitCode {
 
     stdout.flush().unwrap();
 
-    if accept.is_empty() {
-        ExitCode::FAILURE
-    } else {
-        ExitCode::SUCCESS
-    }
+    std::process::exit(if accept.is_empty() { 1 } else { 0 })
 }
 
 fn dev_tty() -> File {
