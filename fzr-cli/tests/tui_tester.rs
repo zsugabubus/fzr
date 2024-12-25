@@ -1,203 +1,255 @@
-use std::{process::Command, time::Duration};
+use std::{
+    fs::read_to_string,
+    io::Write,
+    process::Command,
+    thread,
+    time::{Duration, Instant},
+};
+use tempfile::{NamedTempFile, TempPath};
 
-#[derive(Clone)]
-enum Step {
-    SendKey(String),
-    Wait(Duration),
-    AssertScreen(Vec<String>),
+fn tmux() -> Command {
+    let mut cmd = Command::new("tmux");
+    cmd.args(["-L", "test"]);
+    cmd
 }
 
-#[must_use]
+fn check_output(cmd: &mut Command) -> String {
+    let output = cmd.output().unwrap();
+
+    assert_eq!(std::str::from_utf8(&output.stderr).unwrap(), "");
+    assert!(output.status.success());
+
+    String::from_utf8(output.stdout).unwrap().trim().to_string()
+}
+
+#[track_caller]
+fn retry_eq<T: std::cmp::PartialEq>(left: impl Fn() -> T, right: &T) -> Result<(), T> {
+    let start = Instant::now();
+    let mut backoff = Duration::from_millis(10);
+
+    loop {
+        match left() {
+            x if &x == right => return Ok(()),
+            x if start.elapsed() > Duration::from_secs(1) => return Err(x),
+            _ => {
+                thread::sleep(backoff);
+                backoff *= 2;
+            }
+        }
+    }
+}
+
+#[track_caller]
+fn assert_retry_eq<T: std::fmt::Debug + std::cmp::PartialEq>(actual: impl Fn() -> T, expected: T) {
+    if let Err(actual) = retry_eq(actual, &expected) {
+        assert_eq!(actual, expected);
+        unreachable!();
+    }
+}
+
 #[derive(Clone)]
-pub struct TuiTester {
+pub struct TuiTesterBuilder {
+    executable: String,
     width: usize,
     height: usize,
-    args: String,
+    args: Vec<String>,
     stdin: String,
-    steps: Vec<Step>,
     envs: Vec<(String, String)>,
 }
 
-impl TuiTester {
-    pub fn new() -> Self {
+impl TuiTesterBuilder {
+    pub fn new(executable: impl Into<String>) -> Self {
         Self {
-            width: 60,
-            height: 80,
-            args: String::new(),
+            executable: executable.into(),
+            width: 80,
+            height: 24,
+            args: Vec::new(),
             stdin: String::new(),
-            steps: vec![],
-            envs: vec![],
+            envs: Vec::new(),
         }
-        .wait_millis(50)
     }
 
-    pub fn height(mut self, height: usize) -> Self {
-        self.height = height;
-        self
-    }
-
-    pub fn stdin<T: AsRef<str>>(mut self, s: T) -> Self {
-        self.stdin = s.as_ref().to_string();
-        self
-    }
-
-    pub fn args<T: AsRef<str>>(mut self, s: T) -> Self {
-        self.args = s.as_ref().to_string();
-        self
-    }
-
-    pub fn env<K: Into<String>, V: Into<String>>(mut self, key: K, value: V) -> Self {
+    pub fn env(&mut self, key: impl Into<String>, value: impl Into<String>) -> &mut Self {
         self.envs.push((key.into(), value.into()));
         self
     }
 
-    fn step(mut self, step: Step) -> Self {
-        self.steps.push(step);
+    pub fn height(&mut self, height: usize) -> &mut Self {
+        self.height = height;
         self
     }
 
-    pub fn key<T: AsRef<str>>(self, key: T) -> Self {
-        self.step(Step::SendKey(key.as_ref().to_string()))
-    }
-
-    pub fn keys<I: IntoIterator<Item = T>, T: AsRef<str>>(mut self, keys: I) -> Self {
-        for key in keys {
-            self = self.key(key)
-        }
+    pub fn stdin(&mut self, stdin: impl Into<String>) -> &mut Self {
+        self.stdin = stdin.into();
         self
     }
 
-    pub fn wait(self, duration: Duration) -> Self {
-        self.step(Step::Wait(duration))
+    pub fn args(&mut self, args: impl IntoIterator<Item = impl Into<String>>) -> &mut Self {
+        self.args.extend(args.into_iter().map(Into::into));
+        self
     }
 
-    pub fn wait_millis(self, millis: u64) -> Self {
-        self.wait(Duration::from_millis(millis))
-    }
+    pub fn spawn(&self) -> TuiTester {
+        let (mut stdin, stdin_path) = NamedTempFile::with_prefix("test").unwrap().into_parts();
+        stdin.write_all(self.stdin.as_bytes()).unwrap();
+        drop(stdin);
 
-    pub fn screen<I: IntoIterator<Item = T>, T: AsRef<str>>(self, lines: I) -> Self {
-        self.wait_millis(16).step(Step::AssertScreen(
-            lines.into_iter().map(|s| s.as_ref().to_string()).collect(),
-        ))
-    }
+        let stdout_path = NamedTempFile::with_prefix("test").unwrap().into_temp_path();
 
-    #[track_caller]
-    pub fn assert_screen<I: IntoIterator<Item = T>, T: AsRef<str>>(self, lines: I) {
-        self.screen(lines).assert()
-    }
-
-    #[track_caller]
-    pub fn assert(&self) {
-        fn tmux() -> Command {
-            let mut cmd = Command::new("tmux");
-            cmd.args(["-L", "cargo-test"]);
-            cmd
-        }
-
-        let session_name = format!("thread-{:?}", std::thread::current().id());
-        let buffer_name = session_name.clone();
-        let pane_target = format!("{}:", session_name);
-
-        tmux()
-            .args(["kill-session", "-t", &session_name, ";"])
-            .output()
-            .unwrap();
-
-        {
-            let output = tmux()
-                .envs(self.envs.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-                .args(["-T", "mouse"])
-                .args(["set", "-g", "mouse", "on", ";"])
-                .args([
-                    "set",
-                    "-g",
-                    "update-environment",
-                    &self
-                        .envs
-                        .iter()
-                        .map(|(k, _)| k.as_str())
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                    ";",
-                ])
+        let target = check_output(
+            tmux()
+                .args(["-f", "/dev/null"])
+                .args(["start-server", ";"])
+                .args(["set", "-g", "exit-empty", "off", ";"])
+                .args(["set", "-g", "remain-on-exit", "on", ";"])
+                .args(["set", "-g", "remain-on-exit-format", "", ";"])
                 .args([
                     "new-session",
                     "-d",
-                    "-s",
-                    &session_name,
                     "-x",
-                    &format!("{}", self.width),
+                    &self.width.to_string(),
                     "-y",
-                    &format!("{}", self.height),
+                    &self.height.to_string(),
+                    "-P",
+                    "-F",
+                    "#{pane_id}",
+                ])
+                .args(
+                    self.envs
+                        .iter()
+                        .map(|(name, value)| format!("-e{}={}", name, value)),
+                )
+                .arg(&format!(
+                    "-eTEST_STDIN={}",
+                    stdin_path.as_os_str().to_str().unwrap()
+                ))
+                .arg(&format!(
+                    "-eTEST_STDOUT={}",
+                    stdout_path.as_os_str().to_str().unwrap()
+                ))
+                .args([
                     "sh",
                     "-c",
-                    &format!(
-                        r#"printf '{}' | {} {}; printf "[exit $?]"; sleep 10"#,
-                        self.stdin.replace('\0', "\\0"),
-                        env!("CARGO_BIN_EXE_fzr-cli"),
-                        self.args,
-                    ),
-                    ";",
+                    r#""$@" < "$TEST_STDIN" > "$TEST_STDOUT""#,
+                    "sh",
+                    &self.executable,
                 ])
-                .output()
-                .unwrap();
+                .args(self.args.iter().map(|x| x.as_str())),
+        );
 
-            assert_eq!(String::from_utf8_lossy(&output.stderr), "");
-            assert!(output.status.success());
+        TuiTester {
+            target,
+            _stdin_path: stdin_path,
+            stdout_path,
         }
+    }
+}
 
-        let mut prev_cmd = None;
+pub struct TuiTester {
+    target: String,
+    _stdin_path: TempPath,
+    stdout_path: TempPath,
+}
 
-        for step in &self.steps {
-            let mut cmd = prev_cmd.unwrap_or_else(tmux);
+impl TuiTester {
+    fn expand(&self, s: &str) -> String {
+        check_output(tmux().args(["-N", "display-message", "-p", "-t", &self.target, "--", s]))
+    }
 
-            prev_cmd = match step {
-                Step::SendKey(key) => {
-                    cmd.args(["send-keys", "-t", &pane_target, key, ";"]);
-                    Some(cmd)
-                }
-                Step::Wait(duration) => {
-                    cmd.args([
-                        "run-shell",
-                        "-d",
-                        &format!("{}", duration.as_secs_f64()),
-                        ";",
-                    ]);
-                    Some(cmd)
-                }
-                Step::AssertScreen(expected) => {
-                    let output = cmd
-                        .args([
-                            "capture-pane",
-                            "-e",
-                            "-t",
-                            &pane_target,
-                            "-b",
-                            &buffer_name,
-                            ";",
-                        ])
-                        .args(["show-buffer", "-b", &buffer_name, ";"])
-                        .args(["delete-buffer", "-b", &buffer_name, ";"])
-                        .output()
-                        .unwrap();
+    fn capture_screen(&self, ansi: bool) -> Vec<String> {
+        check_output(tmux().args([
+            "-N",
+            "capture-pane",
+            "-p",
+            "-t",
+            &self.target,
+            if ansi { "-e" } else { "--" },
+        ]))
+        .split('\n')
+        // FIXME: Maybe something related to tmux in CI?
+        .map(|s| s.strip_suffix("\x1b[39m\x1b[49m").unwrap_or(s).to_owned())
+        .collect::<Vec<_>>()
+    }
 
-                    assert_eq!(String::from_utf8_lossy(&output.stderr), "");
-                    assert!(output.status.success());
+    pub fn resize_height(&self, height: usize) -> &Self {
+        check_output(tmux().args([
+            "-N",
+            "resize-window",
+            "-t",
+            &self.target,
+            "-y",
+            &height.to_string(),
+        ]));
+        self
+    }
 
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    let mut lines = stdout
-                        .split('\n')
-                        // FIXME: Maybe something related to tmux in CI?
-                        .map(|s| s.strip_suffix("\x1b[39m\x1b[49m").unwrap_or(s).to_owned())
-                        .collect::<Vec<_>>();
-                    assert_eq!(lines.pop().unwrap(), "");
-                    assert_eq!(&lines, expected);
+    pub fn key(&self, key: impl Into<String>) -> &Self {
+        self.keys([key])
+    }
 
-                    None
-                }
-            }
-        }
+    pub fn keys(&self, keys: impl IntoIterator<Item = impl Into<String>>) -> &Self {
+        check_output(
+            tmux()
+                .args(["-N", "send-keys", "-t", &self.target, "--"])
+                .args(keys.into_iter().map(Into::into)),
+        );
+        self
+    }
 
-        assert!(prev_cmd.is_none());
+    #[track_caller]
+    pub fn expect(&self, to_be_visible: impl AsRef<str>) -> &Self {
+        assert_retry_eq(
+            || {
+                self.capture_screen(false)
+                    .into_iter()
+                    .any(|x| x.contains(to_be_visible.as_ref()))
+            },
+            true,
+        );
+        self
+    }
+
+    #[track_caller]
+    fn assert_screen_helper(
+        &self,
+        screen_lines: impl IntoIterator<Item = impl Into<String>>,
+        ansi: bool,
+    ) -> &Self {
+        assert_retry_eq(
+            || self.capture_screen(ansi),
+            screen_lines.into_iter().map(Into::into).collect::<Vec<_>>(),
+        );
+        self
+    }
+
+    #[track_caller]
+    pub fn assert_screen(
+        &self,
+        screen_lines: impl IntoIterator<Item = impl Into<String>>,
+    ) -> &Self {
+        self.assert_screen_helper(screen_lines, false)
+    }
+
+    #[track_caller]
+    pub fn assert_screen_ansi(
+        &self,
+        screen_lines: impl IntoIterator<Item = impl Into<String>>,
+    ) -> &Self {
+        self.assert_screen_helper(screen_lines, true)
+    }
+
+    #[track_caller]
+    pub fn assert_stdout(&self, stdout: impl Into<String>) -> &Self {
+        assert_retry_eq(|| read_to_string(&self.stdout_path).unwrap(), stdout.into());
+        self
+    }
+
+    #[track_caller]
+    pub fn assert_exit_status(&self, exit_status: u32) -> &Self {
+        assert_retry_eq(
+            || self.expand("exited=#{pane_dead} status=#{pane_dead_status}"),
+            format!("exited=1 status={exit_status}"),
+        );
+        self
     }
 }
