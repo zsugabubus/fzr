@@ -130,14 +130,14 @@ fn and_or() {
 
 #[test]
 fn starts_with() {
-    assert_output(["-fq^a"], "a\nxa", (true, "a\n"));
-    assert_output(["-fq!^a"], "a\nxa", (true, "xa\n"));
+    assert_output(["-fq^a"], "a\nba", (true, "a\n"));
+    assert_output(["-fq!^a"], "a\nba", (true, "ba\n"));
 }
 
 #[test]
 fn ends_with() {
-    assert_output(["-fqa$"], "a\nax", (true, "a\n"));
-    assert_output(["-fq!a$"], "a\nax", (true, "ax\n"));
+    assert_output(["-fqa$"], "a\nab", (true, "a\n"));
+    assert_output(["-fq!a$"], "a\nab", (true, "ab\n"));
 }
 
 #[test]

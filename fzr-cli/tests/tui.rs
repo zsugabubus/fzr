@@ -67,36 +67,6 @@ fn empty_screen() {
 }
 
 #[test]
-fn filled_screen() {
-    fzr()
-        .height(9)
-        .stdin("3\n4\n5\n61\n62")
-        .args(["--header=1", "--header", "2", "--header-lines=2"])
-        .spawn()
-        .expect(">")
-        .key("6")
-        .assert_screen(["> 6", "[2/3]", "1", "2", "3", "4", "61", "62", "~"]);
-}
-
-#[test]
-fn filled_screen_rev() {
-    fzr()
-        .height(9)
-        .stdin("3\n4\n5\n61\n62")
-        .args([
-            "--header=1",
-            "--header",
-            "2",
-            "--header-lines=2",
-            "--reverse",
-        ])
-        .spawn()
-        .expect(">")
-        .key("6")
-        .assert_screen(["~", "62", "61", "4", "3", "2", "1", "[2/3]", "> 6"]);
-}
-
-#[test]
 fn insert_char() {
     assert_query_editor(["ab"], "> ab");
 }
@@ -142,6 +112,27 @@ fn accept_empty() {
 }
 
 #[test]
+fn headers() {
+    for reverse in [false, true] {
+        fzr()
+            .height(9)
+            .stdin("h3\nh4\nx\nl1\nl2")
+            .args(["--header=h1", "--header", "h2", "--header-lines=2"])
+            .args(reverse.then_some("--reverse"))
+            .spawn()
+            .expect(">")
+            .key("l")
+            .assert_screen({
+                let mut lines = ["> l", "[2/3]", "h1", "h2", "h3", "h4", "l1", "l2", "~"];
+                if reverse {
+                    lines.reverse()
+                }
+                lines
+            });
+    }
+}
+
+#[test]
 fn accept() {
     fzr()
         .stdin("a\nb")
@@ -169,10 +160,7 @@ fn select_arrows() {
     assert_select3(["Down", "Down", "Enter"], "3");
     assert_select3(["Down", "Down", "Up", "Enter"], "2");
     assert_select3(["Down", "Down", "Down", "Enter"], "3");
-}
 
-#[test]
-fn select_arrows_rev() {
     assert_select3_rev(["Down", "Enter"], "1");
     assert_select3_rev(["Up", "Enter"], "2");
     assert_select3_rev(["Up", "Down", "Enter"], "1");
@@ -208,7 +196,7 @@ fn query_change_resets_selection() {
         .expect(">")
         .key("Down")
         .assert_screen([">", "[2/2]", "a1", "a2"])
-        .keys(["a", "Enter"])
+        .keys([" ", "Enter"])
         .assert_success("a1\n");
 }
 
