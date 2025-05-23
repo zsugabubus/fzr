@@ -20,7 +20,7 @@ fzr is a command-line fuzzy finder.
 fzr is written in [Rust](https://www.rust-lang.org/).
 
 ```sh
-git clone https://github.com/zsugabubus/fzr
+git clone https://github.com/zsugabubus/fzr --recurse-submodules
 cd fzr
 cargo build --release
 ./target/release/fzr-cli -h

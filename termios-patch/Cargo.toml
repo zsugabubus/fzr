@@ -1,0 +1,9 @@
+[package]
+name = "termios"
+version = "0.3.3+patch"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+termios = { path = "../termios" }
+libc = { version = "*" }

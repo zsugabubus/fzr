@@ -1,0 +1,4 @@
+[submodule "termios"]
+	path = termios
+	url = https://github.com/dcuddeback/termios-rs
+	branch = v0.3.3

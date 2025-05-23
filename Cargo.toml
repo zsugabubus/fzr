@@ -2,6 +2,9 @@
 members = ["utf8_map", "fzr", "fzr-cli"]
 resolver = "2"
 
+[patch.crates-io]
+termios = { path = "termios-patch", package = "termios" }
+
 [profile.release]
 lto = true
 panic = "abort"

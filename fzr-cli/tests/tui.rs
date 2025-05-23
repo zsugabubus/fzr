@@ -53,7 +53,6 @@ fn assert_query_editor(keys: impl IntoIterator<Item = impl Into<String>>, expect
     fzr()
         .height(1)
         .spawn()
-        .expect(">")
         .keys(keys)
         .assert_screen([expected_line]);
 }
@@ -100,6 +99,11 @@ fn long_query() {
 }
 
 #[test]
+fn type_ahead() {
+    fzr().height(1).spawn().key("123").assert_screen(["> 123"]);
+}
+
+#[test]
 fn abort() {
     for key in ["Escape", "C-C", "C-G", "C-Q"] {
         fzr().spawn().expect(">").key(key).assert_fail("");
@@ -120,7 +124,6 @@ fn headers() {
             .args(["--header=h1", "--header", "h2", "--header-lines=2"])
             .args(reverse.then_some("--reverse"))
             .spawn()
-            .expect(">")
             .key("l")
             .assert_screen({
                 let mut lines = ["> l", "[2/3]", "h1", "h2", "h3", "h4", "l1", "l2", "~"];
@@ -220,7 +223,6 @@ fn editor() {
         .height(4)
         .stdin("a\nb")
         .spawn()
-        .expect(">")
         .key("a")
         .assert_screen(["> a", "[1/2]", "a", "~"])
         .key("C-V")
@@ -243,7 +245,6 @@ fn prompt() {
             .height(1)
             .args([arg])
             .spawn()
-            .expect("foo")
             .key(".")
             .assert_screen(["foo."]);
     }
@@ -270,7 +271,6 @@ fn select_1() {
         .stdin("a\nb")
         .args(["--select-1"])
         .spawn()
-        .expect(">")
         .key("a")
         .assert_screen(["> a", "[1/2]"]);
 }
