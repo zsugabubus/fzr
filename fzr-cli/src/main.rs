@@ -1,6 +1,6 @@
 use bumpalo::Bump;
 use clap::Parser as ClapParser;
-use fzr::{find_exact, find_fuzzy, parse_haystack, Haystack, Memory, Pattern, Score};
+use fzr::{Haystack, Memory, Pattern, Score, find_exact, find_fuzzy, parse_haystack};
 use std::{
     cmp::{Ord, Ordering, Reverse},
     fs::File,
@@ -14,13 +14,13 @@ use termwiz::{
     cell::{Cell, CellAttributes},
     color::ColorAttribute,
     escape::{
-        csi::{Sgr, CSI},
-        parser::Parser,
         Action, ControlCode,
+        csi::{CSI, Sgr},
+        parser::Parser,
     },
     input::{InputEvent, KeyCode, KeyEvent, Modifiers, MouseButtons, MouseEvent},
     surface::{Change, CursorShape, Line, Position, SequenceNo, Surface},
-    terminal::{buffered::BufferedTerminal, Terminal},
+    terminal::{Terminal, buffered::BufferedTerminal},
 };
 
 #[derive(ClapParser, Debug)]
@@ -807,15 +807,15 @@ impl HaystackKey {
         self.score = score;
     }
 
-    fn cmp_index(&self) -> impl Ord {
+    fn cmp_index(&self) -> impl Ord + use<> {
         self.index
     }
 
-    fn cmp_score(&self) -> impl Ord {
+    fn cmp_score(&self) -> impl Ord + use<> {
         (Reverse(self.score), self.index)
     }
 
-    fn cmp_matched(&self) -> impl Ord {
+    fn cmp_matched(&self) -> impl Ord + use<> {
         (Reverse(self.score.is_some()), self.index)
     }
 }
