@@ -23,10 +23,5 @@ fzr is written in [Rust](https://www.rust-lang.org/).
 git clone https://github.com/zsugabubus/fzr
 cd fzr
 cargo build --release
-
-# Install for local user
-cp target/release/fzr-cli ~/.local/bin/fzr
-
-# Install for all users
-cp target/release/fzr-cli /usr/local/bin/fzr
+./target/release/fzr-cli -h
 ```
