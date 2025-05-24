@@ -124,7 +124,7 @@ fn main() {
             &mut query,
             &mut searcher,
             sort,
-            &headers,
+            headers,
             cli.reverse,
             cli.interactive_select_1,
         )
@@ -172,7 +172,7 @@ fn interactive(
     query: &mut String,
     searcher: &mut Searcher,
     sort: bool,
-    headers: &[String],
+    headers: Vec<String>,
     reverse: bool,
     select_1: bool,
 ) -> Range<usize> {
