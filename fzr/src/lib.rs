@@ -38,13 +38,14 @@ pub struct Score(NonZeroU64);
 
 impl Score {
     /// Returns the unit score for an exact match.
-    #[inline]
     #[must_use]
+    #[inline]
     pub fn exact_match() -> Self {
         Self(NonZeroU64::new(1 << 45).unwrap())
     }
 
     /// Returns the higher score.
+    #[must_use]
     #[inline]
     pub fn max(self, other: Self) -> Self {
         Self(self.0.max(other.0))
@@ -169,6 +170,7 @@ pub struct Memory {
 
 impl Memory {
     /// Returns some memory.
+    #[must_use]
     #[inline]
     pub fn new() -> Self {
         Memory::default()
@@ -188,6 +190,7 @@ impl<S: AsRef<str>> Haystack<'_, S, Box<[Token]>> {
     /// This function is a safe wrapper around [`parse_haystack`] however it needs to allocate an
     /// auxiliary [`Vec`] on every call. See [`Self::from_parts`] for a more efficient but unsafe
     /// alternative.
+    #[must_use]
     pub fn parse(value: S) -> Self {
         let mut tokens = Vec::new();
         parse_haystack(value.as_ref(), &mut tokens);
@@ -204,6 +207,7 @@ impl<S, T> Haystack<'_, S, T> {
     /// # Safety
     ///
     /// `tokens` must be produced by [`parse_haystack`] from the given `value`.
+    #[must_use]
     #[inline]
     pub unsafe fn from_parts(value: S, tokens: T) -> Self {
         Self {
@@ -213,6 +217,7 @@ impl<S, T> Haystack<'_, S, T> {
         }
     }
 
+    #[must_use]
     #[inline]
     pub fn value(&self) -> &S {
         &self.value
@@ -418,6 +423,7 @@ pub fn parse_haystack(s: &str, tokens: &mut Vec<Token>) {
 /// Finds pattern using a fuzzy matching algorithm.
 ///
 /// Returns [`Some`] if matched, [`None`] otherwise.
+#[must_use]
 pub fn find_fuzzy<'m>(
     haystack: &Haystack,
     pat: &Pattern,
@@ -614,6 +620,7 @@ pub fn find_fuzzy<'m>(
 /// Finds pattern using an exact matching algorithm.
 ///
 /// Returns [`Some`] if matched, [`None`] otherwise.
+#[must_use]
 pub fn find_exact<'m>(
     haystack: &Haystack,
     pat: &Pattern,
@@ -727,6 +734,7 @@ impl Match<'_> {
     /// let foobar_score = find_fuzzy(&foobar.as_ref(), &b, &mut memory).unwrap().score();
     /// assert!(bar_score > foobar_score);
     /// ```
+    #[must_use]
     pub fn score(&self) -> Score {
         self.score
     }
@@ -746,6 +754,7 @@ impl Match<'_> {
     /// assert_eq!(m.ranges().len(), 2);
     /// assert_eq!(&m.ranges().collect::<Vec<_>>(), &[0..1, 3..4]);
     /// ```
+    #[must_use]
     #[inline]
     pub fn ranges(&self) -> Ranges {
         Ranges {

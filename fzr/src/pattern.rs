@@ -36,6 +36,7 @@ pub struct PatternBuilder {
 
 impl PatternBuilder {
     /// Constructs a new [`PatternBuilder`] with defaults.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             case_sensitivity: CaseSensitivity::LowerInsensitive,

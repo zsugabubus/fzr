@@ -22,6 +22,7 @@ pub struct Utf8MapBuilder {
 
 impl Utf8MapBuilder {
     /// Constructs a new [`Utf8MapBuilder`].
+    #[must_use]
     pub fn new() -> Self {
         // Start with one `cont` and one `values` state so unallocated entries will return `0`.
         Self {
@@ -137,6 +138,7 @@ impl Utf8MapBuilder {
     }
 
     /// Builds the [`Utf8Map`].
+    #[must_use]
     pub fn build(self) -> Utf8Map {
         Utf8Map {
             head: self.head,
@@ -217,6 +219,7 @@ pub struct Utf8Map {
 
 impl Utf8Map {
     /// Returns a default [`Utf8MapBuilder`].
+    #[must_use]
     #[inline]
     pub fn builder() -> Utf8MapBuilder {
         Utf8MapBuilder::default()
@@ -226,6 +229,7 @@ impl Utf8Map {
     ///
     /// Returns `(UTF-8 sequence length, value)` tuple wrapped in [`Some`] if string is not empty,
     /// otherwise returns [`None`].
+    #[must_use]
     #[inline(always)]
     pub fn parse_str(&self, s: &str) -> Option<(usize, u32)> {
         if s.is_empty() {
@@ -244,6 +248,7 @@ impl Utf8Map {
     // NOTE: It would be nice if we would not need this function but
     // `parse_str(...).unwrap_unchecked()` is "optimized" in a way that makes it even slower than
     // `parse_str(...).unwrap()`.
+    #[must_use]
     #[inline(always)]
     pub unsafe fn parse_str_unchecked(&self, s: &str) -> (usize, u32) {
         // SAFETY: `get_unchecked`s are valid by construction.
