@@ -117,13 +117,13 @@ impl TuiTesterBuilder {
                 .args(
                     self.envs
                         .iter()
-                        .map(|(name, value)| format!("-e{}={}", name, value)),
+                        .map(|(name, value)| format!("-e{name}={value}")),
                 )
-                .arg(&format!(
+                .arg(format!(
                     "-eTEST_STDIN={}",
                     stdin_path.as_os_str().to_str().unwrap()
                 ))
-                .arg(&format!(
+                .arg(format!(
                     "-eTEST_STDOUT={}",
                     stdout_path.as_os_str().to_str().unwrap()
                 ))

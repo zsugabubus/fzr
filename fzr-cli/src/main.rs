@@ -449,7 +449,7 @@ fn interactive(
             Action::Redraw => {
                 repaint = true;
             }
-        };
+        }
     }
 }
 
@@ -775,7 +775,7 @@ impl Searcher {
                 } else {
                     keys.par_sort_unstable_by_key(HaystackKey::cmp_matched);
                 }
-            };
+            }
 
             keys.binary_search_by(|probe| {
                 if probe.is_match() {

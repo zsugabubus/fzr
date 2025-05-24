@@ -128,7 +128,7 @@ fn headers() {
             .assert_screen({
                 let mut lines = ["> l", "[2/3]", "h1", "h2", "h3", "h4", "l1", "l2", "~"];
                 if reverse {
-                    lines.reverse()
+                    lines.reverse();
                 }
                 lines
             });

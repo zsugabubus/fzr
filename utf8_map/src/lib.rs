@@ -297,7 +297,7 @@ mod tests {
     #[test]
     fn test_parse_str() {
         fn check(input: char) {
-            let s = format!("{}", input);
+            let s = format!("{input}");
 
             let builder = Utf8MapBuilder::new();
             assert_eq!(builder.build().parse_str(&s), Some((input.len_utf8(), 0)));
