@@ -721,12 +721,12 @@ impl Searcher {
         self.matches_len
     }
 
-    fn get_index(&self, index: usize) -> usize {
-        self.keys[index].index
+    fn get_index(&self, visual_index: usize) -> usize {
+        self.keys[visual_index].index
     }
 
-    fn get_str(&self, index: usize) -> &str {
-        self.haystacks.borrow_data()[self.get_index(index)].value()
+    fn get_str(&self, visual_index: usize) -> &str {
+        self.haystacks.borrow_data()[self.get_index(visual_index)].value()
     }
 
     /// Whether haystacks changed and a call to [`find`][Self::find] is required to make
