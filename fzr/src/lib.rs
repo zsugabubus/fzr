@@ -226,7 +226,7 @@ impl<S, T> Haystack<'_, S, T> {
 
 impl<S: AsRef<str>, T: AsRef<[Token]>> Haystack<'_, S, T> {
     #[inline]
-    pub fn as_ref(&self) -> Haystack {
+    pub fn as_ref(&self) -> Haystack<'_> {
         // SAFETY: Taking reference should not affect safety.
         unsafe { Haystack::from_parts(self.value.as_ref(), self.tokens.as_ref()) }
     }
@@ -756,7 +756,7 @@ impl Match<'_> {
     /// ```
     #[must_use]
     #[inline]
-    pub fn ranges(&self) -> Ranges {
+    pub fn ranges(&self) -> Ranges<'_> {
         Ranges {
             index: 0,
             ranges: self.ranges,
