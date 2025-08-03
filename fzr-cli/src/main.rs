@@ -38,31 +38,31 @@ struct Cli {
     #[arg(long)]
     header: Vec<String>,
 
-    /// Treat the first N items as header.
+    /// Treat the first N lines as header.
     #[arg(long, value_name = "N", default_value = "0")]
     header_lines: usize,
 
-    /// If there is only a single match for the initial query, accept it.
+    /// Automatically accept the only match for the initial query.
     #[arg(short = '1', long)]
     select_1: bool,
+
+    /// Automatically accept the only match for an interactive query.
+    #[arg(short = 'a', long)]
+    interactive_select_1: bool,
 
     /// Exit immediately if there is no match for the initial query.
     #[arg(short = '0', long)]
     exit_0: bool,
 
-    /// Same as --select-1 but works in interactive mode.
-    #[arg(short = 'a', long)]
-    interactive_select_1: bool,
-
-    /// Filter mode.
+    /// Accept all matches for the initial query.
     #[arg(short, long)]
     filter: bool,
 
-    /// Read input delimited by ASCII NUL.
+    /// Read lines delimited by ASCII NUL.
     #[arg(long)]
     read0: bool,
 
-    /// Print output delimited by ASCII NUL.
+    /// Print lines delimited by ASCII NUL.
     #[arg(long)]
     print0: bool,
 
@@ -70,7 +70,7 @@ struct Cli {
     #[arg(long)]
     print_query: bool,
 
-    /// Print 0-based index instead of string.
+    /// Print 0-based indices of accepted lines.
     #[arg(short = 'i', long)]
     print_index: bool,
 
@@ -82,7 +82,7 @@ struct Cli {
     #[arg(short = 'S', long, overrides_with = "no_sort")]
     no_sort: bool,
 
-    /// Reverse line order.
+    /// Reverse line order and show prompt at the bottom.
     #[arg(short = 'r', long = "reverse")]
     reverse: bool,
 }
