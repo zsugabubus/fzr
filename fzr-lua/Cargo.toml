@@ -1,0 +1,13 @@
+[package]
+name = "fzr-lua"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+fzr = { path = "../fzr" }
+bumpalo = "3.19.0"
+ouroboros = "0.18.5"

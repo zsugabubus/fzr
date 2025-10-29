@@ -24,18 +24,11 @@ jobs:
       with:
         submodules: recursive
 
-    - name: Install tmux
+    - name: Install dependencies
       run: |
         case $RUNNER_OS in
-        macOS) brew install tmux ;;
-        esac
-      shell: bash
-
-    - name: Install vim
-      run: |
-        case $RUNNER_OS in
-        macOS) brew install vim ;;
-        Linux) sudo apt-get -y install vim ;;
+        macOS) brew install vim luajit tmux ;;
+        Linux) sudo apt-get -y install vim luajit ;;
         esac
       shell: bash
 
