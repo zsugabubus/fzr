@@ -290,8 +290,6 @@ fn interactive(
             Select(usize),
             SelectNext,
             SelectPrev,
-            SelectUp,
-            SelectDown,
             InsertChar(char),
             BackwardDeleteChar,
             BackwardDeleteWord,
@@ -310,8 +308,20 @@ fn interactive(
 
             break match event {
                 InputEvent::Key(KeyEvent { modifiers, key }) => match (modifiers, key) {
-                    (M::ALT, K::Char('j')) => Action::SelectDown,
-                    (M::ALT, K::Char('k')) => Action::SelectUp,
+                    (M::ALT, K::Char('j')) | (M::NONE, K::DownArrow) => {
+                        if reverse {
+                            Action::SelectPrev
+                        } else {
+                            Action::SelectNext
+                        }
+                    }
+                    (M::ALT, K::Char('k')) | (M::NONE, K::UpArrow) => {
+                        if reverse {
+                            Action::SelectNext
+                        } else {
+                            Action::SelectPrev
+                        }
+                    }
                     (M::ALT, K::Char('v')) => Action::Edit,
                     (M::ALT, K::Enter) => Action::AcceptAll,
                     (M::CTRL, K::Char('c')) => Action::AcceptNone,
@@ -325,19 +335,17 @@ fn interactive(
                     (M::CTRL, K::Char('w')) => Action::BackwardDeleteWord,
                     (M::NONE, K::Backspace) => Action::BackwardDeleteChar,
                     (M::NONE, K::Char(c)) => Action::InsertChar(c),
-                    (M::NONE, K::DownArrow) => Action::SelectDown,
                     (M::NONE, K::Enter) => Action::Accept,
                     (M::NONE, K::Escape) => Action::AcceptNone,
-                    (M::NONE, K::UpArrow) => Action::SelectUp,
                     _ => continue,
                 },
                 InputEvent::Mouse(MouseEvent { mouse_buttons, .. })
                     if mouse_buttons.contains(MouseButtons::VERT_WHEEL) =>
                 {
-                    if mouse_buttons.contains(MouseButtons::WHEEL_POSITIVE) {
-                        Action::SelectUp
+                    if mouse_buttons.contains(MouseButtons::WHEEL_POSITIVE) == reverse {
+                        Action::SelectNext
                     } else {
-                        Action::SelectDown
+                        Action::SelectPrev
                     }
                 }
                 InputEvent::Mouse(MouseEvent {
@@ -377,24 +385,6 @@ fn interactive(
             };
         };
 
-        let action = match action {
-            Action::SelectDown => {
-                if reverse {
-                    Action::SelectPrev
-                } else {
-                    Action::SelectNext
-                }
-            }
-            Action::SelectUp => {
-                if reverse {
-                    Action::SelectNext
-                } else {
-                    Action::SelectPrev
-                }
-            }
-            x => x,
-        };
-
         match action {
             Action::Accept => {
                 return if cur < searcher.matches_len() {
@@ -418,7 +408,6 @@ fn interactive(
             Action::SelectPrev => {
                 cur = cur.saturating_sub(1);
             }
-            Action::SelectUp | Action::SelectDown => unreachable!(),
             Action::InsertChar(c) => {
                 query.push(c);
             }
