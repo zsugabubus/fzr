@@ -6,12 +6,12 @@ fn fzr() -> TuiTesterBuilder {
     TuiTesterBuilder::new(env!("CARGO_BIN_EXE_fzr-cli"))
 }
 
-trait FzrTesterExt {
+trait FzrTester {
     fn assert_success(&self, stdout: impl Into<String>) -> &Self;
     fn assert_fail(&self, stdout: impl Into<String>) -> &Self;
 }
 
-impl FzrTesterExt for TuiTester {
+impl FzrTester for TuiTester {
     #[track_caller]
     fn assert_success(&self, stdout: impl Into<String>) -> &Self {
         self.assert_exit_status(0)
@@ -28,7 +28,7 @@ impl FzrTesterExt for TuiTester {
 }
 
 #[track_caller]
-fn assert_select3(keys: impl IntoIterator<Item = impl Into<String>>, expected_line: &str) {
+fn check_select(keys: impl IntoIterator<Item = impl Into<String>>, expected_line: &str) {
     fzr()
         .stdin("1\n2\n3")
         .spawn()
@@ -38,7 +38,7 @@ fn assert_select3(keys: impl IntoIterator<Item = impl Into<String>>, expected_li
 }
 
 #[track_caller]
-fn assert_select3_rev(keys: impl IntoIterator<Item = impl Into<String>>, expected_line: &str) {
+fn check_select_rev(keys: impl IntoIterator<Item = impl Into<String>>, expected_line: &str) {
     fzr()
         .stdin("1\n2\n3")
         .args(["--reverse"])
@@ -49,7 +49,7 @@ fn assert_select3_rev(keys: impl IntoIterator<Item = impl Into<String>>, expecte
 }
 
 #[track_caller]
-fn assert_query_editor(keys: impl IntoIterator<Item = impl Into<String>>, expected_line: &str) {
+fn check_query_editor(keys: impl IntoIterator<Item = impl Into<String>>, expected_line: &str) {
     fzr()
         .height(1)
         .spawn()
@@ -58,7 +58,7 @@ fn assert_query_editor(keys: impl IntoIterator<Item = impl Into<String>>, expect
 }
 
 #[test]
-fn empty_screen() {
+fn empty() {
     fzr()
         .height(4)
         .spawn()
@@ -66,36 +66,32 @@ fn empty_screen() {
 }
 
 #[test]
-fn insert_char() {
-    assert_query_editor(["ab"], "> ab");
+fn typing() {
+    check_query_editor(["ab"], "> ab");
+    check_query_editor([&"a".repeat(50)], &format!("> {}", "a".repeat(50)));
 }
 
 #[test]
-fn backward_delete_char() {
-    assert_query_editor(["C-H"], ">");
-    assert_query_editor(["ab", "C-H"], "> a");
-    assert_query_editor(["aő", "C-H"], "> a");
+fn ctrl_h() {
+    check_query_editor(["C-H"], ">");
+    check_query_editor(["ab", "C-H"], "> a");
+    check_query_editor(["aő", "C-H"], "> a");
 }
 
 #[test]
-fn backward_delete_word() {
-    assert_query_editor(["C-W"], ">");
-    assert_query_editor(["ab", "C-W"], ">");
-    assert_query_editor(["a  b", "C-W", "."], "> a  .");
-    assert_query_editor(["a  bb", "C-W", "."], "> a  .");
-    assert_query_editor(["a  b  ", "C-W", "."], "> a  .");
-    assert_query_editor(["a  bb  ", "C-W", "."], "> a  .");
+fn ctrl_w() {
+    check_query_editor(["C-W"], ">");
+    check_query_editor(["ab", "C-W"], ">");
+    check_query_editor(["a  b", "C-W", "."], "> a  .");
+    check_query_editor(["a  bb", "C-W", "."], "> a  .");
+    check_query_editor(["a  b  ", "C-W", "."], "> a  .");
+    check_query_editor(["a  bb  ", "C-W", "."], "> a  .");
 }
 
 #[test]
-fn backward_delete_line() {
-    assert_query_editor(["C-U"], ">");
-    assert_query_editor(["ab", "C-U"], ">");
-}
-
-#[test]
-fn long_query() {
-    assert_query_editor([&"a".repeat(50)], &format!("> {}", "a".repeat(50)));
+fn ctrl_u() {
+    check_query_editor(["C-U"], ">");
+    check_query_editor(["ab", "C-U"], ">");
 }
 
 #[test]
@@ -104,15 +100,10 @@ fn type_ahead() {
 }
 
 #[test]
-fn abort() {
+fn escape() {
     for key in ["Escape", "C-C", "C-G", "C-Q"] {
         fzr().spawn().expect(">").key(key).assert_fail("");
     }
-}
-
-#[test]
-fn accept_empty() {
-    fzr().spawn().expect(">").key("Enter").assert_fail("");
 }
 
 #[test]
@@ -136,7 +127,7 @@ fn headers() {
 }
 
 #[test]
-fn accept() {
+fn enter() {
     fzr()
         .stdin("a\nb")
         .spawn()
@@ -146,65 +137,78 @@ fn accept() {
 }
 
 #[test]
-fn accept_all() {
+fn alt_enter() {
     fzr()
-        .stdin("a\nb")
+        .stdin("a\nx\nb")
         .spawn()
         .expect(">")
-        .key("M-Enter")
+        .keys(["!x", "M-Enter"])
         .assert_success("a\nb\n");
 }
 
 #[test]
-fn select_arrows() {
-    assert_select3(["Up", "Enter"], "1");
-    assert_select3(["Down", "Enter"], "2");
-    assert_select3(["Down", "Up", "Enter"], "1");
-    assert_select3(["Down", "Down", "Enter"], "3");
-    assert_select3(["Down", "Down", "Up", "Enter"], "2");
-    assert_select3(["Down", "Down", "Down", "Enter"], "3");
-
-    assert_select3_rev(["Down", "Enter"], "1");
-    assert_select3_rev(["Up", "Enter"], "2");
-    assert_select3_rev(["Up", "Down", "Enter"], "1");
-    assert_select3_rev(["Up", "Up", "Enter"], "3");
-    assert_select3_rev(["Up", "Up", "Down", "Enter"], "2");
-    assert_select3_rev(["Up", "Up", "Up", "Enter"], "3");
+fn enter_and_alt_enter_no_selection() {
+    for key in ["Enter", "M-Enter"] {
+        fzr().spawn().expect(">").key(key).assert_fail("");
+        fzr()
+            .stdin("a")
+            .spawn()
+            .expect(">")
+            .keys(["x", key])
+            .assert_fail("");
+    }
 }
 
 #[test]
-fn select_ctrl_pn() {
-    assert_select3(["Down", "C-P", "Enter"], "1");
-    assert_select3(["Down", "C-N", "Enter"], "3");
+fn arrow_up_and_arrow_down() {
+    check_select(["Up", "Enter"], "1");
+    check_select(["Down", "Enter"], "2");
+    check_select(["Down", "Up", "Enter"], "1");
+    check_select(["Down", "Down", "Enter"], "3");
+    check_select(["Down", "Down", "Up", "Enter"], "2");
+    check_select(["Down", "Down", "Down", "Enter"], "3");
 
-    assert_select3_rev(["Up", "C-P", "Enter"], "1");
-    assert_select3_rev(["Up", "C-N", "Enter"], "3");
+    check_select_rev(["Down", "Enter"], "1");
+    check_select_rev(["Up", "Enter"], "2");
+    check_select_rev(["Up", "Down", "Enter"], "1");
+    check_select_rev(["Up", "Up", "Enter"], "3");
+    check_select_rev(["Up", "Up", "Down", "Enter"], "2");
+    check_select_rev(["Up", "Up", "Up", "Enter"], "3");
 }
 
 #[test]
-fn select_meta_kj() {
-    assert_select3(["Down", "M-k", "Enter"], "1");
-    assert_select3(["Down", "M-j", "Enter"], "3");
+fn ctrl_p_and_ctrl_n() {
+    check_select(["Down", "C-P", "Enter"], "1");
+    check_select(["Down", "C-N", "Enter"], "3");
 
-    assert_select3_rev(["Up", "M-k", "Enter"], "3");
-    assert_select3_rev(["Up", "M-j", "Enter"], "1");
+    check_select_rev(["Up", "C-P", "Enter"], "1");
+    check_select_rev(["Up", "C-N", "Enter"], "3");
 }
 
 #[test]
-fn query_change_resets_selection() {
-    fzr()
-        .height(4)
-        .stdin("a1\na2")
-        .spawn()
-        .expect(">")
-        .key("Down")
-        .assert_screen([">", "[2/2]", "a1", "a2"])
-        .keys([" ", "Enter"])
-        .assert_success("a1\n");
+fn alt_k_and_alt_j() {
+    check_select(["Down", "M-k", "Enter"], "1");
+    check_select(["Down", "M-j", "Enter"], "3");
+
+    check_select_rev(["Up", "M-k", "Enter"], "3");
+    check_select_rev(["Up", "M-j", "Enter"], "1");
 }
 
 #[test]
-fn editor() {
+fn selection_after_query_change() {
+    for [key, expected] in [[" ", "1\n"], ["", "2\n"]] {
+        fzr()
+            .height(4)
+            .stdin("1\n2")
+            .spawn()
+            .expect(">")
+            .keys(["Down", key, "Enter"])
+            .assert_success(expected);
+    }
+}
+
+#[test]
+fn ctrl_v() {
     fzr()
         .height(5)
         .stdin("a\0a2\0b")
@@ -219,6 +223,10 @@ fn editor() {
         .assert_screen([">", "[2/2]", "c", "a2", "~"])
         .key("Enter")
         .assert_success("c\n");
+}
+
+#[test]
+fn editor_failure() {
     fzr()
         .height(4)
         .stdin("a\nb")
@@ -229,13 +237,17 @@ fn editor() {
         .expect("1,1")
         .keys(["rc:w", "Enter", ":cq", "Enter"])
         .assert_screen(["> a", "[1/2]", "a", "~"]);
+}
+
+#[test]
+fn editor_is_a_shell_function() {
     fzr()
-        .env("EDITOR", "clear && echo foo && cat </dev/tty #")
-        .height(1)
+        .env("EDITOR", "f() { echo hello > \"$3\"; }; f")
+        .height(6)
         .spawn()
         .expect(">")
-        .key("C-V")
-        .assert_screen(["foo"]);
+        .keys(["C-V", "Enter"])
+        .assert_success("hello\n");
 }
 
 #[test]
@@ -289,21 +301,22 @@ fn exit_0() {
 
 #[test]
 fn interactive_select_1() {
-    fzr()
-        .height(2)
-        .stdin("a")
-        .args(["--interactive-select-1"])
-        .spawn()
-        .assert_screen([">", "[1/1]"]);
-
     for arg in ["--interactive-select-1", "-a"] {
         fzr()
-            .stdin("a\nb")
+            .height(2)
+            .stdin("1")
+            .args([arg])
+            .spawn()
+            .assert_screen([">", "[1/1]"])
+            .key(" ")
+            .assert_success("1\n");
+        fzr()
+            .stdin("1\n2")
             .args([arg])
             .spawn()
             .expect(">")
-            .key("a")
-            .assert_success("a\n");
+            .key("2")
+            .assert_success("2\n");
     }
 }
 
