@@ -178,6 +178,7 @@ fn interactive(
 ) -> Range<usize> {
     let mut prev_query = query.clone();
     let mut cur = 0;
+    let mut offset = 0;
     let mut last_click = None;
 
     let caps = Capabilities::new_from_env().unwrap();
@@ -227,6 +228,7 @@ fn interactive(
 
             prev_query.clone_from(query);
             cur = 0;
+            offset = 0;
         }
 
         front.add_change(Change::ClearScreen(ColorAttribute::Default));
@@ -259,8 +261,9 @@ fn interactive(
         }
 
         let item_ys = y.clone();
+        let page_size = item_ys.len();
 
-        for (i, y) in (0..searcher.matches_len()).zip(y.by_ref()) {
+        for (i, y) in (0..searcher.matches_len()).skip(offset).zip(y.by_ref()) {
             front.set_cursor(y, 0);
             front.set_line_from_sgr_text(
                 searcher.get_str(i).as_bytes(),
@@ -290,6 +293,8 @@ fn interactive(
             Select(usize),
             SelectNext,
             SelectPrev,
+            ScrollPageNext,
+            ScrollPagePrev,
             InsertChar(char),
             BackwardDeleteChar,
             BackwardDeleteWord,
@@ -333,6 +338,22 @@ fn interactive(
                     (M::CTRL, K::Char('u')) => Action::BackwardDeleteLine,
                     (M::CTRL, K::Char('v')) => Action::Edit,
                     (M::CTRL, K::Char('w')) => Action::BackwardDeleteWord,
+                    (M::CTRL, K::Char('b')) => Action::ScrollPagePrev,
+                    (M::CTRL, K::Char('f')) => Action::ScrollPageNext,
+                    (M::NONE, K::PageUp) => {
+                        if reverse {
+                            Action::ScrollPageNext
+                        } else {
+                            Action::ScrollPagePrev
+                        }
+                    }
+                    (M::NONE, K::PageDown) => {
+                        if reverse {
+                            Action::ScrollPagePrev
+                        } else {
+                            Action::ScrollPageNext
+                        }
+                    }
                     (M::NONE, K::Backspace) => Action::BackwardDeleteChar,
                     (M::NONE, K::Char(c)) => Action::InsertChar(c),
                     (M::NONE, K::Enter) => Action::Accept,
@@ -357,6 +378,7 @@ fn interactive(
                         .rev_if(reverse)
                         .take(searcher.matches_len())
                         .position(|y| y == mouse_y)
+                        .map(|i| i + offset)
                     else {
                         continue;
                     };
@@ -398,9 +420,15 @@ fn interactive(
                 if cur + 1 < searcher.matches_len() {
                     cur += 1;
                 }
+                offset = offset
+                    .max(cur.saturating_sub(page_size.saturating_sub(1)))
+                    .min(cur);
             }
             Action::SelectPrev => {
                 cur = cur.saturating_sub(1);
+                offset = offset
+                    .max(cur.saturating_sub(page_size.saturating_sub(1)))
+                    .min(cur);
             }
             Action::InsertChar(c) => {
                 query.push(c);
@@ -431,6 +459,12 @@ fn interactive(
             }
             Action::Redraw => {
                 repaint = true;
+            }
+            Action::ScrollPageNext => {
+                offset = (offset + page_size).min(searcher.matches_len().saturating_sub(page_size));
+            }
+            Action::ScrollPagePrev => {
+                offset = offset.saturating_sub(page_size);
             }
         }
     }

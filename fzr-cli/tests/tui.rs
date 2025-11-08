@@ -372,3 +372,146 @@ fn resize() {
         .key("6")
         .assert_screen(["> 6", "[1/6]", "6", "~"]);
 }
+
+#[test]
+fn scroll_position_after_selection_change() {
+    fzr()
+        .height(3)
+        .stdin("1\n2\n3")
+        .spawn()
+        .key("Down")
+        .assert_screen([">", "[3/3]", "2"])
+        .key("Down")
+        .assert_screen([">", "[3/3]", "3"])
+        .key("Up")
+        .assert_screen([">", "[3/3]", "2"])
+        .key("Up")
+        .assert_screen([">", "[3/3]", "1"]);
+    fzr()
+        .height(4)
+        .stdin("1\n2\n3")
+        .spawn()
+        .key("Down")
+        .assert_screen([">", "[3/3]", "1", "2"])
+        .key("Down")
+        .assert_screen([">", "[3/3]", "2", "3"])
+        .key("Up")
+        .assert_screen([">", "[3/3]", "2", "3"])
+        .key("Up")
+        .assert_screen([">", "[3/3]", "1", "2"]);
+}
+
+#[test]
+fn ctrl_f_and_ctrl_b() {
+    fzr()
+        .height(5)
+        .stdin("1\nx\n2\n3\n4\n5\n6\nx\n7")
+        .spawn()
+        .key("!x")
+        .assert_screen(["> !x", "[7/9]", "1", "2", "3"])
+        .key("C-F")
+        .assert_screen(["> !x", "[7/9]", "4", "5", "6"])
+        .key("C-F")
+        .assert_screen(["> !x", "[7/9]", "5", "6", "7"])
+        .key("C-B")
+        .assert_screen(["> !x", "[7/9]", "2", "3", "4"])
+        .key("C-B")
+        .assert_screen(["> !x", "[7/9]", "1", "2", "3"]);
+    fzr()
+        .height(3)
+        .stdin("1\n2")
+        .args(["--reverse"])
+        .spawn()
+        .assert_screen(["1", "[2/2]", ">"])
+        .key("C-F")
+        .assert_screen(["2", "[2/2]", ">"])
+        .key("C-B")
+        .assert_screen(["1", "[2/2]", ">"]);
+    fzr()
+        .height(3)
+        .stdin("1\n2")
+        .spawn()
+        .expect(">")
+        .key("C-B")
+        .assert_screen([">", "[2/2]", "1"])
+        .keys(["C-F", "C-F"])
+        .assert_screen([">", "[2/2]", "2"]);
+}
+
+#[test]
+fn page_up_and_page_down() {
+    fzr()
+        .height(3)
+        .stdin("1\n2")
+        .spawn()
+        .assert_screen([">", "[2/2]", "1"])
+        .key("PageDown")
+        .assert_screen([">", "[2/2]", "2"])
+        .key("PageUp")
+        .assert_screen([">", "[2/2]", "1"]);
+    fzr()
+        .height(3)
+        .stdin("1\n2")
+        .args(["--reverse"])
+        .spawn()
+        .assert_screen(["1", "[2/2]", ">"])
+        .key("PageUp")
+        .assert_screen(["2", "[2/2]", ">"])
+        .key("PageDown")
+        .assert_screen(["1", "[2/2]", ">"]);
+}
+
+#[test]
+fn selection_after_scroll_change() {
+    fzr()
+        .height(3)
+        .stdin("1\n2\n3")
+        .spawn()
+        .expect(">")
+        .key("Down")
+        .assert_screen([">", "[3/3]", "2"])
+        .key("C-F")
+        .assert_screen([">", "[3/3]", "3"])
+        .key("Enter")
+        .assert_success("2\n");
+}
+
+#[test]
+fn scroll_position_after_query_change() {
+    fzr()
+        .height(3)
+        .stdin("1\n2\n3")
+        .spawn()
+        .expect(">")
+        .key("C-F")
+        .assert_screen([">", "[3/3]", "2"])
+        .key(" ")
+        .assert_screen([">", "[3/3]", "1"]);
+}
+
+#[test]
+fn scroll_position_after_resize() {
+    fzr()
+        .height(3)
+        .stdin("1\n2\n3")
+        .spawn()
+        .key("C-F")
+        .assert_screen([">", "[3/3]", "2"])
+        .resize_height(5)
+        .assert_screen([">", "[3/3]", "2", "3", "~"]);
+}
+
+#[test]
+fn scroll_zero_height() {
+    fzr()
+        .height(1)
+        .stdin("a")
+        .spawn()
+        .assert_screen([">"])
+        .key("C-B")
+        .key("C-F")
+        .key("PageUp")
+        .key("PageDown")
+        .key("Enter")
+        .assert_success("a\n");
+}
