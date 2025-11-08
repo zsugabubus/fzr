@@ -141,3 +141,13 @@ fn contains_exact() {
     check(["-fq'ab"], "ab\naxb", Ok("ab\n"));
     check(["-fq!ab"], "ab\naxb", Ok("axb\n"));
 }
+
+#[test]
+fn too_long_query() {
+    let s = "a".repeat(100);
+    check(
+        [&format!("-fq{}", &s), "--print-query"],
+        &s,
+        Err(&format!("{}\n", &s)),
+    );
+}
