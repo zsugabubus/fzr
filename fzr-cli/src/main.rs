@@ -352,28 +352,22 @@ fn interactive(
                     y, mouse_buttons, ..
                 }) if mouse_buttons.contains(MouseButtons::LEFT) => {
                     let mouse_y = usize::from(y) - 1;
-
-                    let ys = item_ys.clone();
-                    let k = searcher.matches_len();
-                    let f = |y| y == mouse_y;
-
-                    if let Some(i) = if reverse {
-                        ys.rev().take(k).position(f)
-                    } else {
-                        ys.take(k).position(f)
-                    } {
-                        let now = Instant::now();
-                        let fast = last_click
-                            .is_some_and(|x| now.duration_since(x) <= Duration::from_millis(500));
-                        last_click = Some(now);
-
-                        if i == cur && fast {
-                            Action::Accept
-                        } else {
-                            Action::Select(i)
-                        }
-                    } else {
+                    let Some(i) = item_ys
+                        .clone()
+                        .rev_if(reverse)
+                        .take(searcher.matches_len())
+                        .position(|y| y == mouse_y)
+                    else {
                         continue;
+                    };
+                    let now = Instant::now();
+                    let fast = last_click
+                        .is_some_and(|x| now.duration_since(x) <= Duration::from_millis(500));
+                    last_click = Some(now);
+                    if i == cur && fast {
+                        Action::Accept
+                    } else {
+                        Action::Select(i)
                     }
                 }
                 InputEvent::Resized { cols, rows } => {
