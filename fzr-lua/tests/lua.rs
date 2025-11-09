@@ -4,7 +4,8 @@ use std::{path::Path, process::Command};
 fn luajit() {
     let tmp_dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let target_dir = tmp_dir.parent().unwrap().to_path_buf();
-    let lib_path = target_dir.join("debug/libfzr_lua.so");
+    let linux_lib_path = target_dir.join("debug/libfzr_lua.so");
+    let macos_lib_path = target_dir.join("debug/libfzr_lua.dylib");
     let package_path = tmp_dir.join("fzr.so");
     let package_search = tmp_dir.join("?.so");
 
@@ -14,6 +15,11 @@ fn luajit() {
         .unwrap();
     assert!(build.success());
 
+    let lib_path = if linux_lib_path.exists() {
+        linux_lib_path
+    } else {
+        macos_lib_path
+    };
     let _ = std::fs::remove_file(&package_path);
     std::os::unix::fs::symlink(&lib_path, &package_path).unwrap();
 
