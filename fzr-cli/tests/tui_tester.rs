@@ -96,6 +96,8 @@ impl TuiTesterBuilder {
 
         let stdout_path = NamedTempFile::with_prefix("test").unwrap().into_temp_path();
 
+        println!("Spawn {:?}", &self.args);
+
         let target = check_output(
             tmux()
                 .args(["-f", "/dev/null"])
@@ -171,7 +173,52 @@ impl TuiTester {
         .collect::<Vec<_>>()
     }
 
+    fn print_screen(screen: &[String]) {
+        const TOP_LEFT: &str = "┌";
+        const TOP_RIGHT: &str = "┐";
+        const HORIZONTAL: &str = "─";
+        const VERTICAL: &str = "│";
+        const BOTTOM_LEFT: &str = "└";
+        const BOTTOM_RIGHT: &str = "┘";
+        fn width(line: &str) -> usize {
+            line.chars()
+                .fold((0, false), |(width, ansi), c| {
+                    if ansi && c == 'm' {
+                        (width, false)
+                    } else if ansi || c == '\x1b' {
+                        (width, true)
+                    } else {
+                        (width + 1, false)
+                    }
+                })
+                .0
+        }
+        let screen_width = screen.iter().map(|line| width(line)).max().unwrap();
+        println!(
+            "{}{}{}",
+            TOP_LEFT,
+            HORIZONTAL.repeat(screen_width),
+            TOP_RIGHT
+        );
+        for line in screen.iter() {
+            println!(
+                "{}{}{}{}",
+                VERTICAL,
+                line,
+                " ".repeat(screen_width - width(line)),
+                VERTICAL
+            );
+        }
+        println!(
+            "{}{}{}",
+            BOTTOM_LEFT,
+            HORIZONTAL.repeat(screen_width),
+            BOTTOM_RIGHT
+        );
+    }
+
     pub fn resize_height(&self, height: usize) -> &Self {
+        println!("Resize height {height}");
         check_output(tmux().args([
             "-N",
             "resize-window",
@@ -188,19 +235,24 @@ impl TuiTester {
     }
 
     pub fn keys(&self, keys: impl IntoIterator<Item = impl Into<String>>) -> &Self {
+        let keys = keys.into_iter().map(Into::into).collect::<Vec<_>>();
+        println!("Send keys {:?}", &keys);
         check_output(
             tmux()
                 .args(["-N", "send-keys", "-t", &self.target, "--"])
-                .args(keys.into_iter().map(Into::into)),
+                .args(keys),
         );
         self
     }
 
     #[track_caller]
     pub fn expect(&self, to_be_visible: impl AsRef<str>) -> &Self {
+        println!("Expect {:?}", to_be_visible.as_ref());
         assert_retry_eq(
             || {
-                self.capture_screen(false)
+                let screen = self.capture_screen(false);
+                Self::print_screen(&screen);
+                screen
                     .into_iter()
                     .any(|x| x.contains(to_be_visible.as_ref()))
             },
@@ -216,7 +268,11 @@ impl TuiTester {
         ansi: bool,
     ) -> &Self {
         assert_retry_eq(
-            || self.capture_screen(ansi),
+            || {
+                let screen = self.capture_screen(ansi);
+                Self::print_screen(&screen);
+                screen
+            },
             screen_lines.into_iter().map(Into::into).collect::<Vec<_>>(),
         );
         self
