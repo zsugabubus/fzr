@@ -579,70 +579,49 @@ impl Needle {
             }
         }
 
-        fn atom(s: &str) -> (&str, Needle) {
+        fn atom(s: &str) -> Needle {
             let (s, not) = prefix(s, '!');
             let (s, exact) = prefix(s, '\'');
             let (s, anchor_start) = prefix(s, '^');
-            let n = s.find([' ', '|']).unwrap_or(s.len());
-            let (pat, s) = s.split_at(n);
-            let (pat, anchor_end) = suffix(pat, '$');
-
-            if pat.is_empty() {
-                return (s, Needle::Always);
+            let (s, anchor_end) = suffix(s, '$');
+            if s.is_empty() {
+                return Needle::Always;
             }
-
-            let Ok(pat) = Pattern::new(pat) else {
-                return (s, Needle::Never);
+            let Ok(pat) = Pattern::new(s) else {
+                return Needle::Never;
             };
-
             if exact || anchor_start || anchor_end || not {
                 let needle = Needle::Exact {
                     pat,
                     anchor_start,
                     anchor_end,
                 };
-                let needle = if not {
+                if not {
                     Needle::Not(Box::new(needle))
                 } else {
                     needle
-                };
-                (s, needle)
-            } else {
-                (s, Needle::Fuzzy(pat))
-            }
-        }
-
-        fn or(s: &str) -> (&str, Needle) {
-            let s = s.trim_start_matches(' ');
-            let (mut s, mut lhs) = atom(s);
-
-            loop {
-                (s, lhs) = {
-                    let Some(s) = s.strip_prefix('|') else {
-                        return (s, lhs);
-                    };
-                    let (s, rhs) = or(s);
-                    (s, Needle::Or(Box::new(lhs), Box::new(rhs)))
-                };
-            }
-        }
-
-        fn and(s: &str) -> (&str, Needle) {
-            let (mut s, mut lhs) = or(s);
-
-            loop {
-                if s.is_empty() {
-                    return (s, lhs);
                 }
-
-                (s, lhs) = {
-                    let (s, rhs) = and(s);
-                    (s, Needle::And(Box::new(lhs), Box::new(rhs)))
-                };
+            } else {
+                Needle::Fuzzy(pat)
             }
         }
 
-        and(s).1
+        fn or(s: &str) -> Needle {
+            s.split('|')
+                .map(atom)
+                .reduce(|left, right| Needle::Or(Box::new(left), Box::new(right)))
+                .unwrap()
+        }
+
+        fn and(s: &str) -> Needle {
+            s.split(' ')
+                .filter(|s| !s.is_empty())
+                .map(or)
+                .reduce(|left, right| Needle::And(Box::new(left), Box::new(right)))
+                .unwrap_or(Needle::Always)
+        }
+
+        and(s)
     }
 
     fn is_sequential_shrink(&self) -> bool {
