@@ -2,7 +2,7 @@ use bumpalo::Bump;
 use clap::Parser as ClapParser;
 use fzr::{Haystack, Memory, Pattern, Score, find_exact, find_fuzzy, parse_haystack};
 use std::{
-    cmp::{Ord, Ordering, Reverse},
+    cmp::{Ord, Reverse},
     fs::File,
     io::{self, BufRead, BufReader, BufWriter, Write},
     ops::{Deref, Range},
@@ -773,14 +773,7 @@ impl Searcher {
                 }
             }
 
-            keys.binary_search_by(|probe| {
-                if probe.is_match() {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
-            })
-            .unwrap_err()
+            keys.partition_point(HaystackKey::is_match)
         };
         self.dirty = false;
     }
