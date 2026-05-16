@@ -387,7 +387,7 @@ pub unsafe extern "C" fn find(lua: lua::StateRef) -> c_int {
             if let Some(score) = needle.find(haystack, memory).map(|m| m.score()) {
                 i += 1;
                 heap.push((Reverse(score), k));
-                if heap.len() > limit as usize {
+                if heap.len() > limit {
                     heap.pop();
                 }
             } else {
