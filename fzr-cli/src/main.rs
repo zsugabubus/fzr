@@ -24,7 +24,7 @@ use termwiz::{
 };
 
 #[derive(ClapParser, Debug)]
-#[command(version)]
+#[command(name = "fzr", version = env!("FZR_VERSION"))]
 struct Cli {
     /// Initial query.
     #[arg(short, long, default_value = "")]
