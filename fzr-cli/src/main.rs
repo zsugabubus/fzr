@@ -644,7 +644,7 @@ struct Haystacks {
 }
 
 impl Haystacks {
-    fn parse<B>(mut buf: B, delim: u8) -> Self
+    fn parse<B>(mut reader: B, delim: u8) -> Self
     where
         B: BufRead,
     {
@@ -652,16 +652,12 @@ impl Haystacks {
             bump: Bump::new(),
             data_builder: |bump| {
                 let mut haystacks = Vec::with_capacity(128);
-                let mut bytes = Vec::with_capacity(256);
+                let mut buf = Vec::with_capacity(256);
                 let mut tokens = Vec::with_capacity(64);
 
-                while buf.read_until(delim, &mut bytes).is_ok() {
-                    if bytes.is_empty() {
-                        break;
-                    } else if bytes[bytes.len() - 1] == delim {
-                        bytes.pop();
-                    }
-                    if let Ok(s) = std::str::from_utf8(&bytes) {
+                while reader.read_until(delim, &mut buf).is_ok() && !buf.is_empty() {
+                    let v = buf.strip_suffix(&[delim]).unwrap_or(buf.as_ref());
+                    if let Ok(s) = std::str::from_utf8(v) {
                         tokens.clear();
                         parse_haystack(s, &mut tokens);
 
@@ -671,7 +667,7 @@ impl Haystacks {
                         // SAFETY: `tokens` derived from `value`.
                         haystacks.push(unsafe { Haystack::from_parts(value, tokens) });
                     }
-                    bytes.clear();
+                    buf.clear();
                 }
 
                 haystacks
